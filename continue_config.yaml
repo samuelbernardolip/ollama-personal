@@ -1,0 +1,74 @@
+name: Local RTX 3050 Setup
+version: 0.0.1
+schema: v1
+
+# --- MODEL POOL & FUNCTION ALLOCATION ---
+models:
+  # 👑 BEST AGENT & CHAT MODEL (Balanced logic, high instruction accuracy)
+  - name: Qwen2.5-Coder 7B Instruct
+    provider: ollama
+    model: qwen2.5-coder:7b-instruct-q4_K_M
+    roles:
+      - chat
+
+  # 👑 BEST DEEP REASONING MODEL (Slower, uses RL 'thinking' loops for hard algorithms)
+  - name: DeepSeek-R1 8B
+    provider: ollama
+    model: deepseek-r1:8b
+    roles:
+      - chat
+
+  # 👑 BEST LOW-VRAM FAST CHAT (Great fallback if you have heavy background apps)
+  - name: Qwen2.5-Coder 3B
+    provider: ollama
+    model: qwen2.5-coder:3b-instruct-q8_0
+    roles:
+      - chat
+
+  # 👑 BEST INLINE AUTOCOMPLETE (Fast, low-latency, small VRAM footprint)
+  - name: Qwen2.5-Coder 1.5B Base
+    provider: ollama
+    model: qwen2.5-coder:1.5b-base-q8_0
+    roles:
+      - autocomplete
+
+  # 👑 BEST LOCAL EMBEDDING (Powers the @codebase RAG vector database engine)
+  - name: Nomic Embed Text
+    provider: ollama
+    model: nomic-embed-text
+    roles:
+      - embed
+
+# --- SYSTEM RULES & TUNING FOR 8GB VRAM ---
+rules:
+  - role: system
+    content: >
+      You are an expert autonomous senior developer. Provide concise, 
+      production-ready code solutions. Focus heavily on security, clean design, 
+      and strict type safety.
+
+# --- WORKSPACE CONTEXT PROVIDERS ---
+contextProviders:
+  - name: codebase
+    params: {}
+  - name: open
+    params: {}
+  - name: terminal
+    params: {}
+  - name: folder
+    params: {}
+
+# --- ACTIONABLE SLASH COMMANDS ---
+slashCommands:
+  - name: edit
+    description: Agentically modify code directly inside the current selection
+  - name: fix
+    description: Scan selected snippet for bugs and runtime errors
+  - name: doc
+    description: Automatically generate comprehensive docstrings and comments
+
+#name: Main Config
+#version: 1.0.0
+#schema: v1
+#models: []
+
