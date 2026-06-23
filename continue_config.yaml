@@ -1,10 +1,10 @@
-name: Local RTX 3050 Setup
-version: 0.0.1
+name: Local Multi-Vendor RTX 3050 Setup
+version: 1.0.0
 schema: v1
 
 # --- MODEL POOL & FUNCTION ALLOCATION ---
 models:
-  # 👑 BEST AGENT & CHAT MODEL (Balanced logic, high instruction accuracy)
+  # 👑 BEST AGENT & CHAT MODEL (Alibaba Qwen - Balanced logic, high instruction accuracy)
   - name: Qwen2.5-Coder 7B Instruct
     provider: ollama
     model: qwen2.5-coder:7b-instruct-q4_K_M
@@ -18,6 +18,13 @@ models:
     roles:
       - chat
 
+  # 👑 ANTHROPIC CLAUDE SUBSTITUTE (DeepSeek's R1 reasoning distilled into Meta's Llama architecture)
+  - name: Anthropic Style - DeepSeek R1 8B
+    provider: ollama
+    model: deepseek-r1:8b
+    roles:
+      - chat
+
   # 👑 BEST LOW-VRAM FAST CHAT (Great fallback if you have heavy background apps)
   - name: Qwen2.5-Coder 3B
     provider: ollama
@@ -25,14 +32,49 @@ models:
     roles:
       - chat
 
-  # 👑 BEST INLINE AUTOCOMPLETE (Fast, low-latency, small VRAM footprint)
+  # 👑 META REPRESENTATIVE (Excellent General Programming & Tool Use)
+  - name: Meta Llama 3.1 8B
+    provider: ollama
+    model: llama3.1:8b-instruct-q4_K_M
+    roles:
+      - chat
+
+  # 👑 THE BALANCED EDGE AGENT
+  - name: Google Gemma 4 E4B
+    provider: ollama
+    model: gemma4:e4b
+    roles:
+      - chat
+
+  # 👑 THE HIGH-LOGIC DEEP CODE ASSISTANT
+  - name: Google Gemma 2 9B (Heavy)
+    provider: ollama
+    model: gemma2:9b-instruct-q4_K_M
+    roles:
+      - chat
+
+  # 👑 GOOGLE REPRESENTATIVE (Unbelievably sharp logic for a small model)
+  - name: Google Gemma 2 2B
+    provider: ollama
+    model: gemma2:2b
+    roles:
+      - chat
+
+  # 👑 OPENAI GPT SUBSTITUTE (A heavily fine-tuned, ultra-fast 3B model for quick refactoring)
+  - name: OpenAI Style - Llama 3.2 3B
+    provider: ollama
+    model: llama3.2:3b-instruct-q8_0
+    roles:
+      - chat
+
+  # 👑 BEST INLINE AUTOCOMPLETE (Fast, low-latency, small VRAM footprint - Runs simultaneously without lagging your cursor)
   - name: Qwen2.5-Coder 1.5B Base
     provider: ollama
     model: qwen2.5-coder:1.5b-base-q8_0
     roles:
       - autocomplete
 
-  # 👑 BEST LOCAL EMBEDDING (Powers the @codebase RAG vector database engine)
+  # 👑 BEST LOCAL EMBEDDING (Powers the @codebase RAG vector database engine and repo indexer)
   - name: Nomic Embed Text
     provider: ollama
     model: nomic-embed-text
