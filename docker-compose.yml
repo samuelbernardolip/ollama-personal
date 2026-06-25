@@ -9,6 +9,8 @@ services:
       - OLLAMA_NUM_PARALLEL=4
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - OLLAMA_FLASH_ATTENTION=1
+      - OLLAMA_KV_CACHE_TYPE=q8_0
       #- HIP_VISIBLE_DEVICES=-1
     volumes:
       - /var/lib/ollama/data:/root/.ollama
