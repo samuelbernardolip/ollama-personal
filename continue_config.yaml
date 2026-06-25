@@ -1,116 +1,138 @@
-name: Local Multi-Vendor RTX 3050 Setup
+---
+name: Main Config
 version: 1.0.0
 schema: v1
 
 # --- MODEL POOL & FUNCTION ALLOCATION ---
 models:
-  # 👑 BEST AGENT & CHAT MODEL (Alibaba Qwen - Balanced logic, high instruction accuracy)
-  - name: Qwen2.5-Coder 7B Instruct
+  # 👑 BEST AGENT & CHAT MODEL
+  - name: Qwen2.5-Coder 7B [AGENT/CHAT]
     provider: ollama
     model: qwen2.5-coder:7b-instruct-q4_K_M
+    apiBase: http://localhost:11434
     roles:
       - chat
+    contextLength: 16384
+    requestOptions:
+      temperature: 0.1
+      system: "You are a senior software engineer. Provide clean, modular, and performance-optimized code. Omit conversational filler, explanations, or pleasantries. Output code immediately."
 
-  # 👑 BEST DEEP REASONING MODEL (Slower, uses RL 'thinking' loops for hard algorithms)
-  - name: DeepSeek-R1 8B
+  # 👑 BEST DEEP REASONING MODEL
+  - name: DeepSeek-R1 8B [CHAT-REASONING]
     provider: ollama
     model: deepseek-r1:8b
+    apiBase: http://localhost:11434
     roles:
       - chat
+    contextLength: 16384
+    requestOptions:
+      temperature: 0.0
+      system: "You are an advanced software debugging kernel. Walk through your logic carefully inside thinking tags. Once logic is settled, produce exact, mathematically sound, syntactically perfect code fixes. No conversational fluff."
 
-  # 👑 ANTHROPIC CLAUDE SUBSTITUTE (DeepSeek's R1 reasoning distilled into Meta's Llama architecture)
-  - name: Anthropic Style - DeepSeek R1 8B
-    provider: ollama
-    model: deepseek-r1:8b
-    roles:
-      - chat
-
-  # 👑 BEST LOW-VRAM FAST CHAT (Great fallback if you have heavy background apps)
-  - name: Qwen2.5-Coder 3B
+  # 👑 BEST LOW-VRAM FAST CHAT
+  - name: Qwen2.5-Coder 3B [CHAT-FAST]
     provider: ollama
     model: qwen2.5-coder:3b-instruct-q8_0
+    apiBase: http://localhost:11434
     roles:
       - chat
+    contextLength: 32768
+    requestOptions:
+      temperature: 0.2
+      system: "You are a fast, lightweight code refactoring assistant. Focus on clean architecture, DRY principles, and modern idioms. Keep responses direct and code-heavy."
 
-  # 👑 META REPRESENTATIVE (Excellent General Programming & Tool Use)
-  - name: Meta Llama 3.1 8B
+  # 👑 META REPRESENTATIVE
+  - name: Meta Llama 3.1 8B [CHAT-DOCS]
     provider: ollama
     model: llama3.1:8b-instruct-q4_K_M
+    apiBase: http://localhost:11434
     roles:
       - chat
+    contextLength: 16384
+    requestOptions:
+      temperature: 0.3
+      system: "You are a versatile, logical developer assistant. Help explain structural concepts, write documentation, or break down system design specs into actionable milestones."
 
   # 👑 THE BALANCED EDGE AGENT
-  - name: Google Gemma 4 E4B
+  - name: Google Gemma 4 E4B [AGENT-ORCHESTRATION]
     provider: ollama
     model: gemma4:e4b
+    apiBase: http://localhost:11434
     roles:
       - chat
+    contextLength: 32768
+    requestOptions:
+      temperature: 0.4
+      system: "You are an agentic software assistant powered by Google Gemma 4. Excel at planning, structural logic, and multi-step orchestration. Present your findings in clean markdown summaries."
 
   # 👑 THE HIGH-LOGIC DEEP CODE ASSISTANT
-  - name: Google Gemma 2 9B (Heavy)
+  - name: Google Gemma 2 9B [CHAT-COMPILER]
     provider: ollama
     model: gemma2:9b-instruct-q4_K_M
+    apiBase: http://localhost:11434
     roles:
       - chat
+    contextLength: 16384
+    requestOptions:
+      temperature: 0.0
+      system: "You are a deep-logic compiler and type inspector. Analyze algorithms for edge cases, performance bottlenecks, and resource leaks. Be extremely literal and precise."
 
-  # 👑 GOOGLE REPRESENTATIVE (Unbelievably sharp logic for a small model)
-  - name: Google Gemma 2 2B
+  # 👑 GOOGLE REPRESENTATIVE
+  - name: Google Gemma 2 2B [CHAT-LONG-CONTEXT]
     provider: ollama
     model: gemma2:2b
+    apiBase: http://localhost:11434
     roles:
       - chat
+    contextLength: 65536
+    requestOptions:
+      temperature: 0.5
+      system: "You are an edge-optimized context-processing assistant. Scan incoming textual data streams, maintain focus on key references across long contexts, and summarize cleanly."
 
-  # 👑 OPENAI GPT SUBSTITUTE (A heavily fine-tuned, ultra-fast 3B model for quick refactoring)
-  - name: OpenAI Style - Llama 3.2 3B
+  # 👑 OPENAI GPT SUBSTITUTE
+  - name: OpenAI Style - Llama 3.2 3B [CHAT-PROXY]
     provider: ollama
     model: llama3.2:3b-instruct-q8_0
+    apiBase: http://localhost:11434
     roles:
       - chat
+    contextLength: 32768
+    requestOptions:
+      temperature: 0.3
+      system: "You are a precise conversational developer proxy. Emulate the direct, structured, and helpful responses of cloud-based frontier developer models. Structure all output beautifully."
 
-  # 👑 BEST INLINE AUTOCOMPLETE (Fast, low-latency, small VRAM footprint - Runs simultaneously without lagging your cursor)
-  - name: Qwen2.5-Coder 1.5B Base
+  # 👑 LOW-VRAM AGENTic/PLAN MODE
+  - name: Qwen 1.5B [PLAN-MODE]
+    provider: ollama
+    model: qwen2.5-coder:1.5b
+    apiBase: http://localhost:11434
+    roles:
+      - chat
+    contextLength: 32768
+    requestOptions:
+      numCtx: 32768
+      temperature: 0.1
+      system: "You are a lightweight planning kernel. Draft structural steps, file generation lists, and scaffolding code blocks. Remain highly fast, concise, and accurate."
+
+  # 👑 BEST INLINE AUTOCOMPLETE
+  - name: Qwen2.5-Coder 1.5B Base [AUTO]
     provider: ollama
     model: qwen2.5-coder:1.5b-base-q8_0
+    apiBase: http://localhost:11434
     roles:
       - autocomplete
+    contextLength: 4096
+    requestOptions:
+      temperature: 0.0
 
-  # 👑 BEST LOCAL EMBEDDING (Powers the @codebase RAG vector database engine and repo indexer)
-  - name: Nomic Embed Text
+  # 👑 BEST LOCAL EMBEDDING
+  - name: Nomic Embed Text [EMBED]
     provider: ollama
     model: nomic-embed-text
+    apiBase: http://localhost:11434
     roles:
       - embed
-
-# --- SYSTEM RULES & TUNING FOR 8GB VRAM ---
-rules:
-  - role: system
-    content: >
-      You are an expert autonomous senior developer. Provide concise, 
-      production-ready code solutions. Focus heavily on security, clean design, 
-      and strict type safety.
-
-# --- WORKSPACE CONTEXT PROVIDERS ---
-contextProviders:
-  - name: codebase
-    params: {}
-  - name: open
-    params: {}
-  - name: terminal
-    params: {}
-  - name: folder
-    params: {}
-
-# --- ACTIONABLE SLASH COMMANDS ---
-slashCommands:
-  - name: edit
-    description: Agentically modify code directly inside the current selection
-  - name: fix
-    description: Scan selected snippet for bugs and runtime errors
-  - name: doc
-    description: Automatically generate comprehensive docstrings and comments
-
-#name: Main Config
-#version: 1.0.0
-#schema: v1
-#models: []
+    maxChunkSize: 1024
+    requestOptions:
+      numCtx: 8192
 

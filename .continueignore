@@ -1,0 +1,85 @@
+# --- Continue.dev Indexing Ignore Schema ---
+
+# Package Manager Lockfiles (Massive token drains)
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+bun.lockb
+Gemfile.lock
+cargo.lock
+poetry.lock
+mix.lock
+
+# Third-Party Dependencies
+node_modules/
+bower_components/
+vendor/
+.venv/
+venv/
+env/
+lib/
+lib64/
+
+# Build & Compilation Outputs
+dist/
+build/
+out/
+target/
+.next/
+.nuxt/
+.docusaurus/
+htmlcov/
+*.egg-info/
+
+# Compiled Binary & Object Code
+*.exe
+*.dll
+*.so
+*.dylib
+*.class
+*.pyc
+*.pyo
+*.o
+*.obj
+
+# System, IDE, and Environment Secrets
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+
+# Media, Assets, and Vector Graphics
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.ico
+*.mp4
+*.mp3
+*.pdf
+*.woff
+*.woff2
+*.ttf
+*.eot
+
+# Log Files and Database Dumps
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.sql
+*.sqlite
+*.db
+
+# Documentation Artifacts & Generated Spool
+site/
+_site/
+.serverless/
+
