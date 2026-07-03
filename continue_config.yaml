@@ -3,6 +3,35 @@ name: Main Config
 version: 1.0.0
 schema: v1
 
+# --- CORE FUNCTION ALLOCATION RULES ---
+
+# 🛠️ Inline code adjustments (Ctrl+I)
+editModel:
+  name: Qwen2.5-Coder 3B [CHAT-FAST]
+  provider: ollama
+  model: qwen2.5-coder:3b-instruct-q8_0
+
+# ⚡ Codeblock refactoring applications
+applyModel:
+  name: Qwen2.5-Coder 3B [CHAT-FAST]
+  provider: ollama
+  model: qwen2.5-coder:3b-instruct-q8_0
+
+# ⌨️ Ghost-text tab completions
+tabAutocompleteModel:
+  name: Qwen2.5-Coder 1.5B Base [AUTO]
+  provider: ollama
+  model: qwen2.5-coder:1.5b-base-q8_0
+
+# 📂 Codebase semantic search context (@Codebase)
+embeddingsProvider:
+  provider: ollama
+  model: nomic-embed-text
+
+# 🎯 Search result ranking optimization
+rerankerProvider:
+  provider: free-trial
+
 # --- MODEL POOL & FUNCTION ALLOCATION ---
 models:
   # 👑 BEST AGENT & CHAT MODEL
@@ -135,4 +164,20 @@ models:
     maxChunkSize: 1024
     requestOptions:
       numCtx: 8192
+
+prompts:
+  - name: commit
+    description: "Generate a GitLab MR-friendly commit message"
+    prompt: |
+      You are an expert developer creating a git commit message optimized for a GitLab Merge Request description.
+      
+      Review the staged code changes provided below:
+      {{{ input }}}
+
+      Generate a commit message matching these strict GitLab MR rules:
+      1. Write a short, imperative summary line (max 50 chars). 
+      2. Leave a blank line after the summary line.
+      3. Provide a detailed bulleted list explaining *what* changed and *why* (not just how).
+      4. Reference related issues/tickets at the bottom if implied (e.g., "Closes #123" or "Chore:").
+      5. Output ONLY the raw commit message text. No markdown blocks, no 'Here is your message:', and no formatting backticks.
 

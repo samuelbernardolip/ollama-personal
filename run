@@ -1,0 +1,4 @@
+#!/bin/bash
+
+PODMAN_COMPOSE_PROVIDER=podman-compose podman compose up -d
+
