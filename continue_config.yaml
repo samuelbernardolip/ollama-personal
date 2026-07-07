@@ -7,8 +7,8 @@ schema: v1
 #experimental:
 #  useSystemMessageTools: true
 
-# Add this at the root level (same indentation level as 'models:')
 tools:
+  # --- 📂 STANDARD CORE TOOLS ---
   - name: read_currently_open_file
     policy: allow
   - name: read_file
@@ -16,36 +16,75 @@ tools:
   - name: edit_existing_file
     policy: ask
   - name: create_new_file
-    policy: allow
+    policy: ask
   - name: run_terminal_command
     policy: ask
   - name: view_directory_tree
     policy: allow
 
+  # --- 🔍 CODEBASE SEARCH & COMPREHENSION ---
+  - name: search_codebase
+    policy: allow
+  - name: grep_search
+    policy: allow
+  - name: locate_files
+    policy: allow
+  - name: get_outline
+    policy: allow
+
+  # --- 🔱 GIT & VERSION CONTROL INTEGRATION ---
+  - name: git_status
+    policy: allow
+  - name: git_diff
+    policy: allow
+  - name: git_log
+    policy: allow
+
+  # --- ⚙️ WORKSPACE INSPECTION & DIAGNOSTICS ---
+  - name: list_diagnostics
+    policy: allow
+  - name: get_active_editor_selection
+    policy: allow
+
+  # --- 🧪 EXPERIMENTAL & ADVANCED TOOLS ---
+  - name: patch_file             # Fast token-saving regex replacement matching
+    policy: ask
+  - name: install_dependencies   # Package-manager installation execution hooks
+    policy: ask
+  - name: run_test_suite         # Dynamic test command execution wrappers
+    policy: ask
+  - name: fetch_web_page         # Remote standard web context extraction parsing
+    policy: allow
+
+
 # --- CORE FUNCTION ALLOCATION RULES ---
 
 # 🛠️ Inline code adjustments (Ctrl+I)
 editModel:
-  name: Qwen2.5-Coder 3B [CHAT-FAST]
-  provider: ollama
-  model: qwen2.5-coder:3b-instruct-q8_0
+  name: Qwen2.5-Coder 7B [AGENT/CHAT]
+  provider: openai
+  model: qwen2.5-coder:7b-instruct-q4_K_M
+  apiBase: http://localhost:11434/v1
 
 # ⚡ Codeblock refactoring applications
 applyModel:
-  name: Qwen2.5-Coder 3B [CHAT-FAST]
-  provider: ollama
-  model: qwen2.5-coder:3b-instruct-q8_0
+  name: Qwen2.5-Coder 7B [AGENT/CHAT]
+  provider: openai
+  model: qwen2.5-coder:7b-instruct-q4_K_M
+  apiBase: http://localhost:11434/v1
 
 # ⌨️ Ghost-text tab completions
 tabAutocompleteModel:
   name: Qwen2.5-Coder 1.5B Base [AUTO]
   provider: ollama
   model: qwen2.5-coder:1.5b-base-q8_0
+  apiBase: http://localhost:11434
 
 # 📂 Codebase semantic search context (@Codebase)
 embeddingsProvider:
   provider: ollama
   model: nomic-embed-text
+  apiBase: http://localhost:11434
 
 # 🎯 Search result ranking optimization
 rerankerProvider:
@@ -54,7 +93,7 @@ rerankerProvider:
 # --- MODEL POOL & FUNCTION ALLOCATION ---
 
 models:
-  # 👑 BEST AGENT & CHAT MODEL
+  # 👑 BEST AGENT, CHAT & PLANNER
   - name: Qwen2.5-Coder 7B [AGENT/CHAT]
     provider: openai # 💡 Bypasses the local streaming token format bug
     model: qwen2.5-coder:7b-instruct-q4_K_M
@@ -78,13 +117,15 @@ models:
       baseSystemMessage: "You are a senior software engineer. When asked to write programming code, provide clean, modular, and performance-optimized code blocks immediately without pleasantries. When asked to write prose, documentation, or git logs, output direct clean markdown text."
       baseAgentSystemMessage: "You are an advanced coding agent execution engine. You have explicit permission to request file reads, file writes, git actions, and terminal command execution using your system tools. Do not complain about environment restrictions. Execute the tool payload or request directly."
 
-  # 👑 BEST DEEP REASONING MODEL
+  # 👑 BEST DEEP REASONING MODEL (Deep Debugging & Heavy Refactoring)
   - name: DeepSeek-R1 8B [CHAT-REASONING]
-    provider: ollama
+    provider: openai
     model: deepseek-r1:8b
-    apiBase: http://localhost:11434
+    apiBase: http://localhost:11434/v1
     roles:
       - chat
+      - edit        # Allows selection in Ctrl+I for deep logic adjustments
+      - summarize   # Ideal for breaking down complex legacy code blocks
     contextLength: 8192
     requestOptions:
       numCtx: 8192
@@ -94,29 +135,32 @@ models:
       baseSystemMessage: "You are an advanced software debugging kernel. Walk through your logic carefully inside thinking tags. Once logic is settled, produce exact, mathematically sound, syntactically perfect code fixes. No conversational fluff."
       baseAgentSystemMessage: "You are an advanced software debugging agent execution engine. Review your logic inside thinking tags. You have explicit permission to request file reads, file writes, git actions, and terminal command execution using your system tools. Execute the tool payload or request directly."
 
-  # 👑 BEST LOW-VRAM FAST CHAT
+   # 👑 BEST LOW-VRAM FAST CHAT (Fast Inline Modifications)
   - name: Qwen2.5-Coder 3B [CHAT-FAST]
-    provider: ollama
+    provider: openai
     model: qwen2.5-coder:3b-instruct-q8_0
-    apiBase: http://localhost:11434
+    apiBase: http://localhost:11434/v1
     roles:
       - chat
-    contextLength: 16384
+      - edit        # Lightning-fast choice for immediate inline code edits
+      - apply       # Excellent choice for quick code block insertions
+    contextLength: 8192
     requestOptions:
-      numCtx: 16384
+      numCtx: 8192
       numPredict: 1024
       temperature: 0.2
     chatOptions:
       baseSystemMessage: "You are a fast, lightweight code refactoring assistant. Focus on clean architecture, DRY principles, and modern idioms. Keep responses direct and code-heavy."
       baseAgentSystemMessage: "You are a fast, lightweight coding agent. You have explicit permission to use workspace context, read or write files, and run commands using system tools. Execute the task directly."
 
-  # 👑 META REPRESENTATIVE
+    # 👑 META REPRESENTATIVE (OpenAI Compatible Mode)
   - name: Meta Llama 3.1 8B [CHAT-DOCS]
-    provider: ollama
+    provider: openai
     model: llama3.1:8b-instruct-q4_K_M
-    apiBase: http://localhost:11434
+    apiBase: http://localhost:11434/v1
     roles:
       - chat
+      - summarize   # Exceptional at analyzing structural system specifications
     contextLength: 8192
     requestOptions:
       numCtx: 8192
@@ -126,30 +170,32 @@ models:
       baseSystemMessage: "You are a versatile, logical developer assistant. Help explain structural concepts, write documentation, or break down system design specs into actionable milestones."
       baseAgentSystemMessage: "You are an agentic developer assistant. You have full access to workspace context, documentation trees, and filesystem tools. Do not refuse tasks based on environmental restrictions."
 
-  # 👑 THE BALANCED EDGE AGENT
+  # 👑 THE BALANCED EDGE AGENT (OpenAI Compatible Mode)
   - name: Google Gemma 4 E4B [AGENT-ORCHESTRATION]
-    provider: ollama
+    provider: openai
     model: gemma4:e4b
-    apiBase: http://localhost:11434
+    apiBase: http://localhost:11434/v1
     roles:
       - chat
-    contextLength: 16384
+      - edit        # Assigned to allow rapid low-overhead code adjustments
+      - apply       # Excellent lightweight choice for code block merges
+    contextLength: 8192  # Clamped to 8K to protect KV cache space from VRAM thrashing
     requestOptions:
-      numCtx: 16384
+      numCtx: 8192
       numPredict: 1024
       temperature: 0.4
     chatOptions:
       baseSystemMessage: "You are an agentic software assistant powered by Google Gemma 4. Excel at planning, structural logic, and multi-step orchestration. Present your findings in clean markdown summaries."
       baseAgentSystemMessage: "You are an orchestration agent engine powered by Google Gemma 4. You have explicit permission to map, execute, and interface with the local workspace using filesystem, terminal, and git tools."
 
-  # 👑 THE HIGH-LOGIC DEEP CODE ASSISTANT
+  # 👑 THE HIGH-LOGIC DEEP CODE ASSISTANT (OpenAI Compatible Mode)
   - name: Google Gemma 2 9B [CHAT-COMPILER]
-    provider: ollama
+    provider: openai
     model: gemma2:9b-instruct-q4_K_M
-    apiBase: http://localhost:11434
+    apiBase: http://localhost:11434/v1
     roles:
       - chat
-    contextLength: 4096
+    contextLength: 4096  # Kept tight due to the extreme parameter size on an 8GB GPU
     requestOptions:
       numCtx: 4096
       numPredict: 1024
@@ -158,67 +204,71 @@ models:
       baseSystemMessage: "You are a deep-logic compiler and type inspector. Analyze algorithms for edge cases, performance bottlenecks, and resource leaks. Be extremely literal and precise."
       baseAgentSystemMessage: "You are an agentic workspace inspection engine. You have explicit permission to scan the repository, analyze codebases via tools, and evaluate logic limits natively. Proceed directly."
 
-  # 👑 GOOGLE REPRESENTATIVE
+  # 👑 GOOGLE REPRESENTATIVE (Large File Audits & Summaries)
   - name: Google Gemma 2 2B [CHAT-LONG-CONTEXT]
-    provider: ollama
+    provider: openai
     model: gemma2:2b
-    apiBase: http://localhost:11434
+    apiBase: http://localhost:11434/v1
     roles:
       - chat
-    contextLength: 32768
+      - summarize   # Best role for this model to handle large structural logs/diffs
+    contextLength: 16384
     requestOptions:
-      numCtx: 32768
+      numCtx: 16384
       numPredict: 1024
       temperature: 0.5
     chatOptions:
       baseSystemMessage: "You are an edge-optimized context-processing assistant. Scan incoming textual data streams, maintain focus on key references across long contexts, and summarize cleanly."
       baseAgentSystemMessage: "You are an edge-optimized workspace scanning agent. You have permission to request full context file-reads and directory mapping tools. Do not complain about context size or environments."
 
-  # 👑 OPENAI GPT SUBSTITUTE
+    # 👑 OPENAI GPT SUBSTITUTE (OpenAI Compatible Mode)
   - name: OpenAI Style - Llama 3.2 3B [CHAT-PROXY]
-    provider: ollama
+    provider: openai
     model: llama3.2:3b-instruct-q8_0
-    apiBase: http://localhost:11434
+    apiBase: http://localhost:11434/v1 # Added /v1 to route through the tool-safe driver
     roles:
       - chat
-    contextLength: 16384
+      - edit        # Enables proxying fast inline code adjustments
+      - apply       # Allows it to directly write code blocks back to the workspace
+    contextLength: 8192 # Clamped to 8K to protect your 8GB VRAM limits
     requestOptions:
-      numCtx: 16384
+      numCtx: 8192      # Matched to avoid KV cache thrashing
       numPredict: 1024
       temperature: 0.3
     chatOptions:
       baseSystemMessage: "You are a precise conversational developer proxy. Emulate the direct, structured, and helpful responses of cloud-based frontier developer models. Structure all output beautifully."
       baseAgentSystemMessage: "You are an advanced agent proxy. You are authorized to read files, rewrite scripts, and execute system commands using tools injected by the environment. Proceed directly."
 
-  # 👑 LOW-VRAM AGENTic/PLAN MODE
+   # 👑 LOW-VRAM AGENTIC/PLAN MODE (Scaffolding & Architecture Blueprinting)
   - name: Qwen 1.5B [PLAN-MODE]
-    provider: ollama
+    provider: openai
     model: qwen2.5-coder:1.5b
-    apiBase: http://localhost:11434
+    apiBase: http://localhost:11434/v1
     roles:
       - chat
-    contextLength: 32768
+      - edit        # Assigned to permit low-impact agentic edits during multi-step changes
+    contextLength: 8192
     requestOptions:
-      numCtx: 32768
+      numCtx: 8192
       numPredict: 1024
       temperature: 0.1
     chatOptions:
       baseSystemMessage: "You are a lightweight planning kernel. Draft structural steps, file generation lists, and scaffolding code blocks. Remain highly fast, concise, and accurate."
       baseAgentSystemMessage: "You are a lightweight planning agent execution engine. Use your context provider tools to discover architecture, map changes, and review local workspace states natively."
 
-  # 👑 BEST INLINE AUTOCOMPLETE (Unchanged: No Chat/Agent roles)
+  # 👑 BEST INLINE AUTOCOMPLETE
   - name: Qwen2.5-Coder 1.5B Base [AUTO]
     provider: ollama
     model: qwen2.5-coder:1.5b-base-q8_0
     apiBase: http://localhost:11434
     roles:
       - autocomplete
-    contextLength: 4096
+    contextLength: 2048
     requestOptions:
-      numCtx: 4096
+      numCtx: 2048
       temperature: 0.0
 
-  # 👑 BEST LOCAL EMBEDDING (Unchanged: No Chat/Agent roles)
+  # 👑 BEST LOCAL EMBEDDING
   - name: Nomic Embed Text [EMBED]
     provider: ollama
     model: nomic-embed-text
