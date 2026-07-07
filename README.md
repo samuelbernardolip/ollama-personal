@@ -204,3 +204,70 @@ Because Gemma 2 9B and DeepSeek-R1 8B push the upper boundaries of your 8GB card
 ### Allocation Tip for Your Machine:
 
 To quickly run these specific prompts in VS Code using Continue, highlight the segment of code you want to touch, hit Ctrl + I (or Cmd + I), type the shortcut name (e.g., /fix-rust or /fix-next), and press Enter. This will run the instruction as an inline diff change on your screen, which bypasses the heavier chat layout to save system memory.
+
+## 🛠️ Structural Context Management Plan
+
+This is a very common and fundamental architectural challenge when working with Large Language Models (LLMs). The message "exceeds context limit" means you have hit a hard constraint—the token limit of the specific model or API call being used.
+
+*You cannot bypass this limit directly; instead, you must employ strategies to **structure your input** so that only the most relevant tokens are passed to the LLM.*
+
+In the following section, it is structured a multi-phase plan covering three levels of intervention: **Optimization (Quick Fixes)**, **Architecture (Best Practices)**, and **Technology (Maximum Capacity)**.
+
+### Phase 1: Operational Optimization (The Low-Hanging Fruit)
+
+These steps require no major infrastructure changes but significantly improve the quality and efficiency of your prompts. This is about being a better "teacher" to the model.
+
+#### 🎯 1. Improve Prompt Engineering (Targeted Focus)
+
+Do not ask the model, "Analyze this entire file." Instead, provide highly constrained questions that force it to focus its attention on specific areas.
+
+*   **Example:** Instead of: `"Please review the whole document and tell me what went wrong."`
+    *   **Use:** `"Focus only on Section 4.2 ("Risk Assessment"). Based solely on this section, list three actionable items needed to mitigate these risks."`
+*   **Action:** Include explicit instructions like `[ONLY USE THE PROVIDED TEXT TO ANSWER]` to prevent the model from hallucinating or pulling general knowledge.
+
+#### 📄 2. Pre-Process and Triage (Filtering Noise)
+
+Before referencing any large file, run a simple script (or use an initial, fast LLM call) to filter out non-essential text.
+
+*   **Filter Candidates:** Remove boilerplate headers/footers, legal disclaimers, empty sections, or appendix material that is purely illustrative and not academically relevant to the task at hand.
+*   **Goal:** Dedicate tokens only to contextual meat, leaving space for instructions and output.
+
+### Phase 2: Architectural Solutions (The Core Fix - RAG)
+
+If your files are large documents (reports, books, manuals), you cannot feed them whole. You must switch from **Direct Input** to a **Retrieval-Aggregated Input**. The industry standard solution for this is **Retrieval Augmented Generation (RAG)**.
+
+This framework fundamentally changes how you interact with the data: instead of treating the document as context, you treat it as an external database that you query.
+
+#### 🧠 How RAG works in theory:
+
+1.  **Ingestion/Indexing:** The large source file is broken down into small, manageable chunks (e.g., 500 tokens each).
+2.  **Embedding:** Each chunk is passed through an **Embedding Model** (e.g., `text-embedding-3-large`). This model converts the semantic meaning of the text into a dense numerical vector.
+3.  **Storage:** These vectors, along with the original chunks, are stored in a specialized database called a **Vector Database** (e.g., Pinecone, ChromaDB, FAISS).
+4.  **Querying/Retrieval (The Magic):** When you ask your question, the system doesn't feed the whole file. Instead, it converts *your question* into a vector and performs a **Similarity Search** against the stored vectors in the database.
+5.  **Synthesis:** The database returns only the top $N$ most semantically relevant chunks (e.g., 3-5 passages) to your LLM context window.
+
+#### ✨ Implementation Recommendations:
+
+*   **Chunking Strategy:** Do not use a fixed token count for chunking alone. Implement **semantic chunking**, where you break the document at natural breaks like paragraph endings, section titles, or figure captions. This maintains contextual integrity within each chunk.
+*   **Overlapping Chunks:** Include a small amount of overlap tokens (5-10%) between consecutive chunks. This trick ensures that crucial context split over two chunks is not lost.
+
+### Phase 3: Technology & Scale Solutions (The Maximum Capacity)
+
+If RAG is too complex, or if you genuinely need the LLM to process massive amounts of contiguous text without external databases, your only option is to use advanced models designed for this task.
+
+#### 🚀 1. Utilize Models with Massive Context Windows
+
+Some cutting-edge models are explicitly engineered for truly enormous context lengths (e.g., Gemini 1.5 Pro and its successors, or specialized GPT-4 variants). These models often allow access to hundreds of thousands or even millions of tokens in a single call.
+
+*   **Benefit:** This is the simplest fix if your budget allows it—it physically expands the container size.
+*   **Limitation:** While this fixes the token count issue, be aware that performance and cost scale dramatically with input length (the "lost in the middle" problem).
+
+#### 💡 2. Implement Progressive Summarization and Iteration
+
+If you are working within a framework or GUI environment ("continue configuration"), implement an automated pipeline:
+
+1.  **Pass 1:** Extract all key sections $\rightarrow$ Generate a summary of those sections into `Summary A`. (Context usage: low)
+2.  **Pass 2:** Pass `Summary A` and the most relevant original text chunks to generate a meta-summary, `Summary B`. (Context usage: medium)
+3.  **Pass 3:** Pass `Summary B` and the final prompt to get the answer. (Context usage: lowest)
+
+This iterative approach drastically compresses context while preserving core meaning, allowing you to solve massive problems using multiple small "context passes" instead of one giant fail.
