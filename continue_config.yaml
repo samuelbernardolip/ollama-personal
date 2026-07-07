@@ -135,6 +135,23 @@ models:
       baseSystemMessage: "You are an advanced software debugging kernel. Walk through your logic carefully inside thinking tags. Once logic is settled, produce exact, mathematically sound, syntactically perfect code fixes. No conversational fluff."
       baseAgentSystemMessage: "You are an advanced software debugging agent execution engine. Review your logic inside thinking tags. You have explicit permission to request file reads, file writes, git actions, and terminal command execution using your system tools. Execute the tool payload or request directly."
 
+  # 👑 MISTRAL REPRESENTATIVE (OpenAI Compatible Mode)
+  - name: Mistral 7B [CHAT-GENERALIST]
+    provider: openai
+    model: mistral:7b-instruct
+    apiBase: http://localhost:11434/v1
+    roles:
+      - chat
+      - summarize   # Exceptional at writing documentation and commit logs
+    contextLength: 8192  # Capped at 8K to protect your 8GB VRAM map
+    requestOptions:
+      numCtx: 8192      # Forces Ollama to scale up past its default 2K allocation limit
+      numPredict: 1024
+      temperature: 0.3
+    chatOptions:
+      baseSystemMessage: "You are a versatile, logical developer assistant powered by Mistral. Help explain structural concepts, write concise documentation, or break down system design specs into clean milestones."
+      baseAgentSystemMessage: "You are an agentic developer assistant powered by Mistral. You have full access to workspace context, documentation trees, and filesystem tools. Maintain strict formatting protocols."
+
    # 👑 BEST LOW-VRAM FAST CHAT (Fast Inline Modifications)
   - name: Qwen2.5-Coder 3B [CHAT-FAST]
     provider: openai
