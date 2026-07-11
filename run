@@ -1,7 +1,7 @@
 #!/bin/bash
 
 nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
-podman info --format "{{.Plugins.CDI}}"
+nvidia-ctk cdi list
 
 PODMAN_COMPOSE_PROVIDER=podman-compose podman compose up -d
 
