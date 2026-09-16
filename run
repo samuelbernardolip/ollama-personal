@@ -3,5 +3,5 @@
 nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
 nvidia-ctk cdi list
 
-PODMAN_COMPOSE_PROVIDER=podman-compose podman compose up -d
+STORAGE_DRIVER=btrfs PODMAN_COMPOSE_PROVIDER=podman-compose podman compose up -d
 
