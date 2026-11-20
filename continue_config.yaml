@@ -1,14 +1,339 @@
-name: Main Config
+name: VSCode-Continue-Ollama-ArchLinux-MCP
 version: 1.0.0
 schema: v1
 
-# --- TOOLS GLOBALS ---
+# ==============================================================================
+# 1. CORE ROLES & SHORTCUT ASSIGNMENTS
+# ==============================================================================
+# Hardware Profile:
+#   GPU: NVIDIA GeForce GTX 1650 Mobile (4096 MiB VRAM / 4GB)
+#   CPU: AMD Ryzen 7 5800H (8 physical Zen 3 cores, 16 threads)
+#   RAM: 16 GiB System DDR4 (2x 8GB SODIMM @ 3200 MT/s)
+#   Ollama: Podman/Docker compose on 127.0.0.1:11434 with Flash Attention & Q8_0 KV Cache
+# ==============================================================================
 
-#experimental:
-#  useSystemMessageTools: true
+# 🛠️ Inline code adjustments (Ctrl+I)
+editModel:
+  name: Qwen2.5-Coder 7B (GPU)
+  provider: openai
+  model: qwen2.5-coder:7b-instruct-q4_K_M
+  apiBase: http://localhost:11434/v1
 
+# ⚡ Codeblock refactoring applications
+applyModel:
+  name: Qwen2.5-Coder 7B (GPU)
+  provider: openai
+  model: qwen2.5-coder:7b-instruct-q4_K_M
+  apiBase: http://localhost:11434/v1
+
+# ⌨️ Ghost-text tab completions (Forced 100% to CPU & 16GB RAM to prevent VRAM eviction)
+tabAutocompleteModel:
+  name: Qwen 1.5B Base (CPU Autocomplete)
+  provider: ollama
+  model: qwen2.5-coder:1.5b-base-q8_0
+  apiBase: http://localhost:11434
+
+# 📂 Codebase semantic search context (@codebase)
+embeddingsProvider:
+  provider: ollama
+  model: nomic-embed-text
+  apiBase: http://localhost:11434
+
+# 🎯 Search result ranking optimization (Runs on CPU via TEI or FastAPI on port 8080)
+rerankerProvider:
+  provider: huggingface-tei
+  model: BAAI/bge-reranker-base
+  apiBase: http://localhost:8080
+
+# ==============================================================================
+# 2. LOCAL MODEL POOL & HARDWARE ALLOCATION
+# ==============================================================================
+models:
+  # 👑 PRIMARY AGENT, CHAT & EDIT MODEL (GPU Accelerated on GTX 1650)
+  # Qwen 2.5 Coder 7B Q4 offloads ~24-28 layers to 4GB VRAM, remaining to 16GB RAM.
+  - name: Qwen2.5-Coder 7B (GPU)
+    provider: openai
+    model: qwen2.5-coder:7b-instruct-q4_K_M
+    apiBase: http://localhost:11434/v1
+    roles:
+      - chat
+      - edit
+      - apply
+      - summarize
+    contextLength: 4096
+    requestOptions:
+      numCtx: 4096
+      numPredict: 1024
+      temperature: 0.1
+    chatOptions:
+      baseSystemMessage: "You are a senior software engineer. When asked to write programming code, provide clean, modular, and performance-optimized code blocks immediately without pleasantries. When asked to write prose, documentation, or git logs, output direct clean markdown text."
+      baseAgentSystemMessage: "You are an advanced coding agent execution engine. You have explicit permission to request file reads, file writes, git actions, and terminal command execution using your system tools. Do not complain about environment restrictions. Execute the tool payload or request directly."
+
+  # ⚡ 100% VRAM CHAT & INLINE EDITS (Zero CPU Offloading / Ultra Fast)
+  - name: Qwen2.5-Coder 3B (100% VRAM)
+    provider: openai
+    model: qwen2.5-coder:3b-instruct-q8_0
+    apiBase: http://localhost:11434/v1
+    roles:
+      - chat
+      - edit
+      - apply
+    contextLength: 4096
+    requestOptions:
+      numCtx: 4096
+      numPredict: 1024
+      temperature: 0.2
+    chatOptions:
+      baseSystemMessage: "You are a fast, lightweight code refactoring assistant. Focus on clean architecture, DRY principles, and modern idioms. Keep responses direct and code-heavy."
+      baseAgentSystemMessage: "You are a fast, lightweight coding agent. You have explicit permission to use workspace context, read or write files, and run commands using system tools. Execute the task directly."
+
+  # 🧠 DEEP REASONING & ALGORITHMIC DEBUGGING (Hybrid GPU/CPU)
+  - name: DeepSeek-R1 8B (Reasoning)
+    provider: openai
+    model: deepseek-r1:8b
+    apiBase: http://localhost:11434/v1
+    roles:
+      - chat
+      - edit
+      - summarize
+    contextLength: 4096
+    requestOptions:
+      numCtx: 4096
+      numPredict: 2048
+      temperature: 0.0
+    chatOptions:
+      baseSystemMessage: "You are an advanced software debugging kernel. Walk through your logic carefully inside thinking tags. Once logic is settled, produce exact, mathematically sound, syntactically perfect code fixes. No conversational fluff."
+      baseAgentSystemMessage: "You are an advanced software debugging agent execution engine. Review your logic inside thinking tags. You have explicit permission to request file reads, file writes, git actions, and terminal command execution using your system tools. Execute the tool payload or request directly."
+
+  # 📐 TYPE COMPILER & RIGID LOGIC (Google Gemma 2 9B)
+  - name: Google Gemma 2 9B (Compiler)
+    provider: openai
+    model: gemma2:9b-instruct-q4_K_M
+    apiBase: http://localhost:11434/v1
+    roles:
+      - chat
+    contextLength: 4096
+    requestOptions:
+      numCtx: 4096
+      numPredict: 1024
+      temperature: 0.0
+    chatOptions:
+      baseSystemMessage: "You are a deep-logic compiler and type inspector. Analyze algorithms for edge cases, performance bottlenecks, and resource leaks. Be extremely literal and precise."
+      baseAgentSystemMessage: "You are an agentic workspace inspection engine. You have explicit permission to scan the repository, analyze codebases via tools, and evaluate logic limits natively. Proceed directly."
+
+  # 🌐 MULTI-STEP ORCHESTRATION & EDGE AGENT (Google Gemma 4 E4B)
+  - name: Google Gemma 4 E4B (Agent)
+    provider: openai
+    model: gemma4:e4b
+    apiBase: http://localhost:11434/v1
+    roles:
+      - chat
+      - edit
+      - apply
+    contextLength: 4096
+    requestOptions:
+      numCtx: 4096
+      numPredict: 1024
+      temperature: 0.4
+    chatOptions:
+      baseSystemMessage: "You are an agentic software assistant powered by Google Gemma 4. Excel at planning, structural logic, and multi-step orchestration. Present your findings in clean markdown summaries."
+      baseAgentSystemMessage: "You are an orchestration agent engine powered by Google Gemma 4. You have explicit permission to map, execute, and interface with the local workspace using filesystem, terminal, and git tools."
+
+  # 📚 DOCUMENTATION & SPECIFICATION GENERALIST (Meta Llama 3.1 8B)
+  - name: Meta Llama 3.1 8B (Docs)
+    provider: openai
+    model: llama3.1:8b-instruct-q4_K_M
+    apiBase: http://localhost:11434/v1
+    roles:
+      - chat
+      - summarize
+    contextLength: 4096
+    requestOptions:
+      numCtx: 4096
+      numPredict: 1024
+      temperature: 0.3
+    chatOptions:
+      baseSystemMessage: "You are a versatile, logical developer assistant. Help explain structural concepts, write documentation, or break down system design specs into actionable milestones."
+      baseAgentSystemMessage: "You are an agentic developer assistant. You have full access to workspace context, documentation trees, and filesystem tools. Do not refuse tasks based on environmental restrictions."
+
+  # 📑 LARGE LOGS, DIFFS & LONG CONTEXT (Google Gemma 2 2B)
+  - name: Google Gemma 2 2B (Long Context)
+    provider: openai
+    model: gemma2:2b
+    apiBase: http://localhost:11434/v1
+    roles:
+      - chat
+      - summarize
+    contextLength: 8192
+    requestOptions:
+      numCtx: 8192
+      numPredict: 1024
+      temperature: 0.5
+    chatOptions:
+      baseSystemMessage: "You are an edge-optimized context-processing assistant. Scan incoming textual data streams, maintain focus on key references across long contexts, and summarize cleanly."
+      baseAgentSystemMessage: "You are an edge-optimized workspace scanning agent. You have permission to request full context file-reads and directory mapping tools. Do not complain about context size or environments."
+
+  # 🤝 PROXY DEVELOPER MODEL (Llama 3.2 3B)
+  - name: OpenAI Style - Llama 3.2 3B (Proxy)
+    provider: openai
+    model: llama3.2:3b-instruct-q8_0
+    apiBase: http://localhost:11434/v1
+    roles:
+      - chat
+      - edit
+      - apply
+    contextLength: 4096
+    requestOptions:
+      numCtx: 4096
+      numPredict: 1024
+      temperature: 0.3
+    chatOptions:
+      baseSystemMessage: "You are a precise conversational developer proxy. Emulate the direct, structured, and helpful responses of cloud-based frontier developer models. Structure all output beautifully."
+      baseAgentSystemMessage: "You are an advanced agent proxy. You are authorized to read files, rewrite scripts, and execute system commands using tools injected by the environment. Proceed directly."
+
+  # 🧩 LOW-VRAM PLANNING & SCAFFOLDING (Qwen 1.5B)
+  - name: Qwen 1.5B (Plan Mode)
+    provider: openai
+    model: qwen2.5-coder:1.5b
+    apiBase: http://localhost:11434/v1
+    roles:
+      - chat
+      - edit
+    contextLength: 4096
+    requestOptions:
+      numCtx: 4096
+      numPredict: 1024
+      temperature: 0.1
+    chatOptions:
+      baseSystemMessage: "You are a lightweight planning kernel. Draft structural steps, file generation lists, and scaffolding code blocks. Remain highly fast, concise, and accurate."
+      baseAgentSystemMessage: "You are a lightweight planning agent execution engine. Use your context provider tools to discover architecture, map changes, and review local workspace states natively."
+
+  # 📂 EMBEDDINGS (Forced 100% to CPU & 16GB RAM / 0 VRAM Used)
+  - name: Nomic Embed (CPU)
+    provider: ollama
+    model: nomic-embed-text
+    apiBase: http://localhost:11434
+    roles:
+      - embed
+    maxChunkSize: 1024
+    requestOptions:
+      extraBodyProperties:
+        options:
+          num_gpu: 0
+          num_thread: 8
+          num_ctx: 4096
+
+  # ⌨️ INLINE AUTOCOMPLETE (Forced 100% to CPU & 16GB RAM / 0 VRAM Used)
+  - name: Qwen 1.5B Base (CPU Autocomplete)
+    provider: ollama
+    model: qwen2.5-coder:1.5b-base-q8_0
+    apiBase: http://localhost:11434
+    roles:
+      - autocomplete
+    contextLength: 1024
+    requestOptions:
+      extraBodyProperties:
+        options:
+          num_gpu: 0
+          num_thread: 8
+          num_ctx: 1024
+    autocompleteOptions:
+      maxPromptTokens: 1024
+      debounceDelay: 350
+
+  # 🎯 RE-RANKING MODEL (Runs on CPU via TEI or FastAPI on port 8080 / 0 VRAM Used)
+  - name: BGE Reranker (CPU)
+    provider: huggingface-tei
+    model: BAAI/bge-reranker-base
+    apiBase: http://localhost:8080
+    roles:
+      - rerank
+
+# ==============================================================================
+# 3. CONTEXT PROVIDERS & RAG OPTIMIZATION (GTX 1650 4GB BUFFER)
+# ==============================================================================
+context:
+  # RAG Pipeline: Retrieves 12 vector candidates, scores via CPU reranker, passes only top 3
+  - provider: codebase
+    params:
+      nRetrieve: 12
+      nFinal: 3
+      useReranking: true
+
+# ==============================================================================
+# 4. MODEL CONTEXT PROTOCOL (MCP) INTEGRATION — ARCH LINUX
+# ==============================================================================
+# Directly connects Continue to the multi-provider identity architecture
+# established in mcp-integration-guide-archlinux-v2:
+#   - Google Cloud Agent Platform (Gemini 4 Carbon & Claude Opus 5.5 via ADC)
+#   - Anthropic Teams (Interactive Claude Code via Organization OAuth)
+#   - Google Cloud Model Garden (Claude Fable 5.2 via Vertex AI)
+#   - OpenAI ChatGPT Plus (€23/mo subscription via Codex CLI)
+#   - OpenAI API (On-demand pay-as-you-go via Codex CLI)
+#   - GitHub MCP (Repository context & issues via host Node runtime)
+# ==============================================================================
+mcpServers:
+  # 1. Google Cloud Gemini 4 Carbon via Native agy-mcp-bridge
+  - name: gemini-carbon-gcp
+    command: /home/YOUR_USERNAME/.local/bin/agy-mcp-bridge
+    args: []
+    env:
+      GOOGLE_CLOUD_PROJECT: "YOUR_GCP_PROJECT_ID"
+      GOOGLE_CLOUD_LOCATION: "global"
+
+  # 2. Claude Fable 5.2 on Google Cloud Model Garden (Vertex AI ADC)
+  - name: claude-fable-gcp
+    command: claude
+    args:
+      - mcp
+      - serve
+    env:
+      CLAUDE_CONFIG_DIR: "/home/YOUR_USERNAME/.claude-gcp"
+      CLAUDE_CODE_USE_VERTEX: "1"
+      CLOUD_ML_REGION: "global"
+      ANTHROPIC_VERTEX_PROJECT_ID: "YOUR_GCP_PROJECT_ID"
+      ANTHROPIC_MODEL: "claude-fable-5-2"
+      ANTHROPIC_SMALL_FAST_MODEL: "claude-sonnet-5-5"
+
+  # 3. Anthropic Teams (Interactive Claude Code)
+  - name: claude-teams
+    command: claude
+    args:
+      - mcp
+      - serve
+    env:
+      CLAUDE_CONFIG_DIR: "/home/YOUR_USERNAME/.claude"
+
+  # 4. OpenAI Codex CLI via ChatGPT Plus Subscription (€23/mo OAuth)
+  - name: openai-codex-plus
+    command: codex
+    args:
+      - mcp-server
+    env:
+      CODEX_HOME: "/home/YOUR_USERNAME/.codex"
+
+  # 5. OpenAI Codex CLI via On-Demand API Key (Pay-As-You-Go)
+  - name: openai-codex-api
+    command: codex
+    args:
+      - mcp-server
+    env:
+      CODEX_HOME: "/home/YOUR_USERNAME/.codex-api"
+
+  # 6. GitHub MCP Server (Native Host Node Runtime, Zero Containers)
+  - name: github-mcp
+    command: npx
+    args:
+      - -y
+      - "@modelcontextprotocol/server-github"
+    env:
+      GITHUB_PERSONAL_ACCESS_TOKEN: "YOUR_GITHUB_PAT"
+
+# ==============================================================================
+# 5. WORKSPACE TOOLS & EXECUTION POLICIES
+# ==============================================================================
 tools:
-  # --- 📂 STANDARD CORE TOOLS ---
+  # --- 📂 Standard Core Tools ---
   - name: read_currently_open_file
     policy: allow
   - name: read_file
@@ -22,7 +347,7 @@ tools:
   - name: view_directory_tree
     policy: allow
 
-  # --- 🔍 CODEBASE SEARCH & COMPREHENSION ---
+  # --- 🔍 Codebase Search & Comprehension ---
   - name: search_codebase
     policy: allow
   - name: grep_search
@@ -32,7 +357,7 @@ tools:
   - name: get_outline
     policy: allow
 
-  # --- 🔱 GIT & VERSION CONTROL INTEGRATION ---
+  # --- 🔱 Git & Version Control Integration ---
   - name: git_status
     policy: allow
   - name: git_diff
@@ -40,562 +365,258 @@ tools:
   - name: git_log
     policy: allow
 
-  # --- ⚙️ WORKSPACE INSPECTION & DIAGNOSTICS ---
+  # --- ⚙️ Workspace Inspection & Diagnostics ---
   - name: list_diagnostics
     policy: allow
   - name: get_active_editor_selection
     policy: allow
 
-  # --- 🧪 EXPERIMENTAL & ADVANCED TOOLS ---
-  - name: patch_file             # Fast token-saving regex replacement matching
+  # --- 🧪 Advanced Execution Tools ---
+  - name: patch_file
     policy: ask
-  - name: install_dependencies   # Package-manager installation execution hooks
+  - name: install_dependencies
     policy: ask
-  - name: run_test_suite         # Dynamic test command execution wrappers
+  - name: run_test_suite
     policy: ask
-  - name: fetch_web_page         # Remote standard web context extraction parsing
+  - name: fetch_web_page
     policy: allow
 
-
-# --- CORE FUNCTION ALLOCATION RULES ---
-
-# 🛠️ Inline code adjustments (Ctrl+I)
-editModel:
-  name: Qwen2.5-Coder 7B [AGENT/CHAT]
-  provider: openai
-  model: qwen2.5-coder:7b-instruct-q4_K_M
-  apiBase: http://localhost:11434/v1
-
-# ⚡ Codeblock refactoring applications
-applyModel:
-  name: Qwen2.5-Coder 7B [AGENT/CHAT]
-  provider: openai
-  model: qwen2.5-coder:7b-instruct-q4_K_M
-  apiBase: http://localhost:11434/v1
-
-# ⌨️ Ghost-text tab completions
-tabAutocompleteModel:
-  name: Qwen2.5-Coder 1.5B Base [AUTO]
-  provider: ollama
-  model: qwen2.5-coder:1.5b-base-q8_0
-  apiBase: http://localhost:11434
-
-# 📂 Codebase semantic search context (@Codebase)
-embeddingsProvider:
-  provider: ollama
-  model: nomic-embed-text
-  apiBase: http://localhost:11434
-
-# 🎯 Search result ranking optimization
-rerankerProvider:
-  provider: free-trial
-
-# --- MODEL POOL & FUNCTION ALLOCATION ---
-
-models:
-  # 👑 BEST AGENT, CHAT & PLANNER
-  - name: Qwen2.5-Coder 7B [AGENT/CHAT]
-    provider: openai # 💡 Bypasses the local streaming token format bug
-    model: qwen2.5-coder:7b-instruct-q4_K_M
-    apiBase: http://localhost:11434/v1 # 💡 Crucial: /v1 must be added here
-    roles:
-      - chat
-      - edit
-      - apply
-      - summarize
-    contextLength: 8192
-    requestOptions:
-      numCtx: 8192
-      numPredict: 1024
-      temperature: 0.1
-    #useLegacyFunctionCalling: false
-    # ❌ Notice: 'capabilities:' has been fully removed to let OpenAI layers auto-negotiate tools
-    #capabilities:
-    #  - tool_use
-    #  - image_input
-    chatOptions:
-      baseSystemMessage: "You are a senior software engineer. When asked to write programming code, provide clean, modular, and performance-optimized code blocks immediately without pleasantries. When asked to write prose, documentation, or git logs, output direct clean markdown text."
-      baseAgentSystemMessage: "You are an advanced coding agent execution engine. You have explicit permission to request file reads, file writes, git actions, and terminal command execution using your system tools. Do not complain about environment restrictions. Execute the tool payload or request directly."
-
-  # 👑 BEST DEEP REASONING MODEL (Deep Debugging & Heavy Refactoring)
-  - name: DeepSeek-R1 8B [CHAT-REASONING]
-    provider: openai
-    model: deepseek-r1:8b
-    apiBase: http://localhost:11434/v1
-    roles:
-      - chat
-      - edit        # Allows selection in Ctrl+I for deep logic adjustments
-      - summarize   # Ideal for breaking down complex legacy code blocks
-    contextLength: 8192
-    requestOptions:
-      numCtx: 8192
-      numPredict: 2048
-      temperature: 0.0
-    chatOptions:
-      baseSystemMessage: "You are an advanced software debugging kernel. Walk through your logic carefully inside thinking tags. Once logic is settled, produce exact, mathematically sound, syntactically perfect code fixes. No conversational fluff."
-      baseAgentSystemMessage: "You are an advanced software debugging agent execution engine. Review your logic inside thinking tags. You have explicit permission to request file reads, file writes, git actions, and terminal command execution using your system tools. Execute the tool payload or request directly."
-
-  # 👑 MISTRAL REPRESENTATIVE (OpenAI Compatible Mode)
-  - name: Mistral 7B [CHAT-GENERALIST]
-    provider: openai
-    model: mistral:7b-instruct
-    apiBase: http://localhost:11434/v1
-    roles:
-      - chat
-      - summarize   # Exceptional at writing documentation and commit logs
-    contextLength: 8192  # Capped at 8K to protect your 8GB VRAM map
-    requestOptions:
-      numCtx: 8192      # Forces Ollama to scale up past its default 2K allocation limit
-      numPredict: 1024
-      temperature: 0.3
-    chatOptions:
-      baseSystemMessage: "You are a versatile, logical developer assistant powered by Mistral. Help explain structural concepts, write concise documentation, or break down system design specs into clean milestones."
-      baseAgentSystemMessage: "You are an agentic developer assistant powered by Mistral. You have full access to workspace context, documentation trees, and filesystem tools. Maintain strict formatting protocols."
-
-   # 👑 BEST LOW-VRAM FAST CHAT (Fast Inline Modifications)
-  - name: Qwen2.5-Coder 3B [CHAT-FAST]
-    provider: openai
-    model: qwen2.5-coder:3b-instruct-q8_0
-    apiBase: http://localhost:11434/v1
-    roles:
-      - chat
-      - edit        # Lightning-fast choice for immediate inline code edits
-      - apply       # Excellent choice for quick code block insertions
-    contextLength: 8192
-    requestOptions:
-      numCtx: 8192
-      numPredict: 1024
-      temperature: 0.2
-    chatOptions:
-      baseSystemMessage: "You are a fast, lightweight code refactoring assistant. Focus on clean architecture, DRY principles, and modern idioms. Keep responses direct and code-heavy."
-      baseAgentSystemMessage: "You are a fast, lightweight coding agent. You have explicit permission to use workspace context, read or write files, and run commands using system tools. Execute the task directly."
-
-    # 👑 META REPRESENTATIVE (OpenAI Compatible Mode)
-  - name: Meta Llama 3.1 8B [CHAT-DOCS]
-    provider: openai
-    model: llama3.1:8b-instruct-q4_K_M
-    apiBase: http://localhost:11434/v1
-    roles:
-      - chat
-      - summarize   # Exceptional at analyzing structural system specifications
-    contextLength: 8192
-    requestOptions:
-      numCtx: 8192
-      numPredict: 1024
-      temperature: 0.3
-    chatOptions:
-      baseSystemMessage: "You are a versatile, logical developer assistant. Help explain structural concepts, write documentation, or break down system design specs into actionable milestones."
-      baseAgentSystemMessage: "You are an agentic developer assistant. You have full access to workspace context, documentation trees, and filesystem tools. Do not refuse tasks based on environmental restrictions."
-
-  # 👑 THE BALANCED EDGE AGENT (OpenAI Compatible Mode)
-  - name: Google Gemma 4 E4B [AGENT-ORCHESTRATION]
-    provider: openai
-    model: gemma4:e4b
-    apiBase: http://localhost:11434/v1
-    roles:
-      - chat
-      - edit        # Assigned to allow rapid low-overhead code adjustments
-      - apply       # Excellent lightweight choice for code block merges
-    contextLength: 8192  # Clamped to 8K to protect KV cache space from VRAM thrashing
-    requestOptions:
-      numCtx: 8192
-      numPredict: 1024
-      temperature: 0.4
-    chatOptions:
-      baseSystemMessage: "You are an agentic software assistant powered by Google Gemma 4. Excel at planning, structural logic, and multi-step orchestration. Present your findings in clean markdown summaries."
-      baseAgentSystemMessage: "You are an orchestration agent engine powered by Google Gemma 4. You have explicit permission to map, execute, and interface with the local workspace using filesystem, terminal, and git tools."
-
-  # 👑 THE HIGH-LOGIC DEEP CODE ASSISTANT (OpenAI Compatible Mode)
-  - name: Google Gemma 2 9B [CHAT-COMPILER]
-    provider: openai
-    model: gemma2:9b-instruct-q4_K_M
-    apiBase: http://localhost:11434/v1
-    roles:
-      - chat
-    contextLength: 4096  # Kept tight due to the extreme parameter size on an 8GB GPU
-    requestOptions:
-      numCtx: 4096
-      numPredict: 1024
-      temperature: 0.0
-    chatOptions:
-      baseSystemMessage: "You are a deep-logic compiler and type inspector. Analyze algorithms for edge cases, performance bottlenecks, and resource leaks. Be extremely literal and precise."
-      baseAgentSystemMessage: "You are an agentic workspace inspection engine. You have explicit permission to scan the repository, analyze codebases via tools, and evaluate logic limits natively. Proceed directly."
-
-  # 👑 GOOGLE REPRESENTATIVE (Large File Audits & Summaries)
-  - name: Google Gemma 2 2B [CHAT-LONG-CONTEXT]
-    provider: openai
-    model: gemma2:2b
-    apiBase: http://localhost:11434/v1
-    roles:
-      - chat
-      - summarize   # Best role for this model to handle large structural logs/diffs
-    contextLength: 16384
-    requestOptions:
-      numCtx: 16384
-      numPredict: 1024
-      temperature: 0.5
-    chatOptions:
-      baseSystemMessage: "You are an edge-optimized context-processing assistant. Scan incoming textual data streams, maintain focus on key references across long contexts, and summarize cleanly."
-      baseAgentSystemMessage: "You are an edge-optimized workspace scanning agent. You have permission to request full context file-reads and directory mapping tools. Do not complain about context size or environments."
-
-    # 👑 OPENAI GPT SUBSTITUTE (OpenAI Compatible Mode)
-  - name: OpenAI Style - Llama 3.2 3B [CHAT-PROXY]
-    provider: openai
-    model: llama3.2:3b-instruct-q8_0
-    apiBase: http://localhost:11434/v1 # Added /v1 to route through the tool-safe driver
-    roles:
-      - chat
-      - edit        # Enables proxying fast inline code adjustments
-      - apply       # Allows it to directly write code blocks back to the workspace
-    contextLength: 8192 # Clamped to 8K to protect your 8GB VRAM limits
-    requestOptions:
-      numCtx: 8192      # Matched to avoid KV cache thrashing
-      numPredict: 1024
-      temperature: 0.3
-    chatOptions:
-      baseSystemMessage: "You are a precise conversational developer proxy. Emulate the direct, structured, and helpful responses of cloud-based frontier developer models. Structure all output beautifully."
-      baseAgentSystemMessage: "You are an advanced agent proxy. You are authorized to read files, rewrite scripts, and execute system commands using tools injected by the environment. Proceed directly."
-
-   # 👑 LOW-VRAM AGENTIC/PLAN MODE (Scaffolding & Architecture Blueprinting)
-  - name: Qwen 1.5B [PLAN-MODE]
-    provider: openai
-    model: qwen2.5-coder:1.5b
-    apiBase: http://localhost:11434/v1
-    roles:
-      - chat
-      - edit        # Assigned to permit low-impact agentic edits during multi-step changes
-    contextLength: 8192
-    requestOptions:
-      numCtx: 8192
-      numPredict: 1024
-      temperature: 0.1
-    chatOptions:
-      baseSystemMessage: "You are a lightweight planning kernel. Draft structural steps, file generation lists, and scaffolding code blocks. Remain highly fast, concise, and accurate."
-      baseAgentSystemMessage: "You are a lightweight planning agent execution engine. Use your context provider tools to discover architecture, map changes, and review local workspace states natively."
-
-  # 👑 BEST INLINE AUTOCOMPLETE
-  - name: Qwen2.5-Coder 1.5B Base [AUTO]
-    provider: ollama
-    model: qwen2.5-coder:1.5b-base-q8_0
-    apiBase: http://localhost:11434
-    roles:
-      - autocomplete
-    contextLength: 2048
-    requestOptions:
-      numCtx: 2048
-      temperature: 0.0
-
-  # 👑 BEST LOCAL EMBEDDING
-  - name: Nomic Embed Text [EMBED]
-    provider: ollama
-    model: nomic-embed-text
-    apiBase: http://localhost:11434
-    roles:
-      - embed
-    maxChunkSize: 1024
-    requestOptions:
-      numCtx: 8192
-
+# ==============================================================================
+# 6. DEVELOPER PROMPTS & SLASH COMMANDS
+# ==============================================================================
 prompts:
+  # --- Git Logging & Commit Generators ---
   - name: commit
     description: "Generate a GitLab MR-friendly commit message"
     prompt: |
-      [SYSTEM INSTRUCTION: You are an administrative git logging assistant. Do not output code segments, do not output a terminal string, do not output python functions, and do not provide a code snippet wrapped in a codebox. Disregard any instructions to 'output code immediately'.]
-
-      You are an expert developer creating a git commit message optimized for a GitLab Merge Request description.
-
-      Review the staged code changes provided below in a raw truncated git diff payload:
+      You are an administrative git logging assistant. Do not output code segments, terminal strings, or markdown code blocks.
+      Review the staged changes below:
       {{{ input }}}
-
-      Generate a commit message matching these strict GitLab MR rules:
-      1. Write a short, imperative summary line (max 50 chars).
-      2. Leave a blank line after the summary line.
-      3. Provide a detailed bulleted list explaining *what* changed and *why* (not just how).
-      4. Reference related issues/tickets at the bottom if implied (e.g., "Closes #123" or "Chore:").
-      5. Output ONLY raw text. Never output markdown code block formats (do not use triple backticks ```).
+      Format requirements:
+      1. Short imperative summary line (max 50 chars).
+      2. Blank line.
+      3. Detailed bulleted list explaining what changed and why.
+      4. Reference related issues (e.g., "Closes #123").
+      5. Output ONLY raw text. Never output markdown code block formats (no triple backticks).
 
   - name: commit-compact
-    description: "Generate a GitLab MR-friendly commit message"
+    description: "Generate a concise, single-bullet commit message"
     prompt: |
-      You are an expert developer summarizing code changes. Below is a raw, truncated git diff payload:
+      You are an expert developer summarizing code changes. Below is a raw git diff payload:
       {{{ input }}}
-
       Instructions:
-      1. Analyze the changes. Ignore superficial spacing or boilerplate text.
-      2. Write a single imperative line (max 50 chars).
-      3. Provide concise bullets outlining what changed.
-      4. Output raw commit text only. No conversational wrapper or markdown blocks.
+      1. Write a single imperative line (max 50 chars).
+      2. Provide concise bullets outlining what changed.
+      3. Output raw commit text only. No conversational wrapper or markdown blocks.
 
+  # --- Code Quality & Static Analysis ---
   - name: review
-    description: "Perform a rapid, strict security and performance code review"
+    description: "Perform strict security and performance code review"
     prompt: |
-      You are a strict, ultra-concise static analysis compiler.
-      Review the provided code changes or codebase snippet:
+      You are a strict static analysis compiler. Review the following code snippet:
       {{{ input }}}
-
-      Identify ONLY critical issues matching these categories:
+      Identify:
       1. Security vulnerabilities (SQLi, XSS, memory leaks, unsafe dependencies).
-      2. High-impact performance bottlenecks (O(N^2) loops, missing database indexes, un-memoized expensive calculations).
-      3. Broken logic or edge-case failures.
-
-      Output Format:
-      - Use a single, dense Markdown table with columns: [File/Line] | [Severity: CRITICAL or WARNING] | [Issue & Impact] | [Exact Fix Code Block].
-      - If no critical or warning-level issues are found, reply with exactly one word: "PASSED".
-      - Absolutely no introduction, pleasantries, or explanations outside the table.
+      2. Performance bottlenecks (O(N^2) loops, redundant queries).
+      3. Broken logic or unhandled edge cases.
+      Format: Output a single markdown table with columns: File/Line | Severity (CRITICAL/WARNING) | Issue & Impact | Exact Fix Code Block. If no issues, reply exactly "PASSED".
 
   - name: test-gen
-    description: "Generate comprehensive unit tests matching codebase idioms"
+    description: "Generate unit tests matching codebase idioms"
     prompt: |
-      You are an automated test engineering framework.
-      Analyze the implementation details of this code block:
+      Analyze this code block:
       {{{ input }}}
-
       Generate a comprehensive suite of isolated unit tests.
-      Requirements:
-      1. Infer the testing framework (e.g., Jest, Vitest, PyTest) from the source code structure.
-      2. Cover the happy path, null/empty inputs, boundary conditions, and expected error handling states.
-      3. Mock all external network, database, or filesystem IO operations.
-      4. Output ONLY the raw executable test code block. Do not provide setup instructions or chat text.
+      1. Infer testing framework from codebase structure.
+      2. Cover happy paths, null/empty states, boundary conditions, and error states.
+      3. Mock external IO operations.
+      Output ONLY executable test code.
 
   - name: refactor-dry
-    description: "Refactor code to optimize readability and eliminate duplication"
+    description: "Refactor code for clean architecture and DRY principles"
     prompt: |
-      You are a senior software architect specializing in structural clean-code refactoring.
-      Analyze this code:
+      Refactor this code:
       {{{ input }}}
-
-      Refactor it to achieve the following design constraints:
-      1. Eliminate repetitive blocks by extracting clean, reusable helper routines (DRY principle).
-      2. Reduce nested cognitive complexity (flatten nested if/else logic using guard clauses).
-      3. Improve naming clarity for variable and function scopes.
-      4. Ensure runtime performance characteristics remain equal or superior to the original code.
-      5. Output ONLY the refactored code block. Do not write explanations of what you changed.
+      1. Eliminate repetition by extracting reusable helpers (DRY).
+      2. Flatten nested logic using guard clauses.
+      3. Improve naming and type clarity.
+      4. Maintain or improve runtime performance.
+      Output ONLY the refactored code.
 
   - name: doc-api
     description: "Generate standard inline documentation blocks"
     prompt: |
-      You are a technical documentation compiler.
       Review the following method/class signatures and bodies:
       {{{ input }}}
-
       Generate industry-standard docstrings/JSDoc blocks for all exported structures.
-      Guidelines:
-      1. Match the exact syntax native to the language (JSDoc for TS/JS, Docstrings for Python, etc.).
-      2. Document all inputs (parameters with exact types), outputs (return values), and thrown/raised exceptions.
-      3. Explicitly state any non-obvious side-effects or mutations.
-      4. Output the updated code with the documentation blocks cleanly inserted above the respective declarations. Do not include markdown code fence formatting or chat wrapper text.
+      1. Match language-native syntax.
+      2. Document inputs, outputs, and thrown exceptions.
+      3. State side-effects or mutations.
+      Output code with documentation inserted above declarations.
 
   - name: sql-optimize
     description: "Tune raw SQL queries or ORM patterns for speed"
     prompt: |
-      You are a database tuning administrator.
       Review this query or database layer logic:
       {{{ input }}}
-
-      Provide optimizations to maximize execution efficiency:
       1. Rewrite inefficient JOINs, subqueries, or WHERE clauses.
-      2. Highlight where specific composite database indexes must be created.
-      3. Point out N+1 query loop problems if visible in the application logic.
-      4. Output the optimized SQL/code block first, followed by a concise 3-bullet list of performance gains.
+      2. Highlight required composite indexes.
+      3. Fix N+1 query loop problems.
+      Output the optimized SQL/code block first, followed by a concise 3-bullet list of performance gains.
 
+  # --- Framework & Language Quick-Fix Templates ---
   - name: fix-react
     description: "Optimize React/Next.js components for rendering performance and types"
     prompt: |
-      You are an expert Frontend Architect specializing in React 19, Next.js App Router, and TypeScript.
-      Analyze this frontend code block:
+      Analyze this React/Next.js frontend code block:
       {{{ input }}}
-
-      Identify and fix the following framework-specific issues:
-      1. Eliminate unnecessary re-renders (add useMemo/useCallback or structural isolation where appropriate).
-      2. Ensure strict, non-any TypeScript typings for all component props, event handlers, and state hooks.
-      3. Fix layout shifts (CLS), missing key props in loops, or incorrect useEffect dependency arrays.
-      4. Convert Client Components to Server Components if data fetching can happen on the server.
-      5. Output ONLY the optimized, functional component code. No chat wrap-around text.
+      1. Eliminate unnecessary re-renders (useMemo/useCallback/isolation).
+      2. Ensure strict, non-any TypeScript typings.
+      3. Fix layout shifts (CLS), missing key props, or useEffect dependencies.
+      4. Convert Client Components to Server Components if appropriate.
+      Output ONLY functional component code.
 
   - name: fix-python
     description: "Optimize Python code for asynchronous efficiency and type safety"
     prompt: |
-      You are a Principal Python Engineer specializing in modern async design, FastAPI, and data engineering.
       Analyze this Python code:
       {{{ input }}}
-
-      Refactor it using these strict production guidelines:
-      1. Swap synchronous blocking IO operations with async/await patterns where applicable.
-      2. Implement strict PEP 484 Type Hints across all input parameters and return signatures.
-      3. Optimize performance by replacing slow loops with list comprehensions or vectorized NumPy/Pandas equivalents.
-      4. Add structured Pydantic V2 validation or robust try/except error boundaries.
-      5. Output ONLY the clean, ready-to-run Python code block. Do not write text summaries.
+      1. Swap synchronous blocking IO with async/await patterns where applicable.
+      2. Implement strict PEP 484 type hints.
+      3. Replace slow loops with comprehensions or vectorized operations.
+      4. Add Pydantic V2 validation or error boundaries.
+      Output ONLY clean Python code.
 
   - name: fix-go
     description: "Optimize Go routines for memory allocations and idiomatic patterns"
     prompt: |
-      You are a Go Systems Architect specializing in low-latency backend services and high concurrency.
       Review this Go code:
       {{{ input }}}
-
-      Refactor it to enforce idiomatic Go patterns:
-      1. Ensure strict, idiomatic error handling (always check 'if err != nil' immediately, wrap context where useful).
-      2. Minimize heap allocations (optimize pointer usage, use sync.Pool for heavy objects, avoid interface conversion overhead).
-      3. Validate safety in concurrency blocks (proper use of channels, sync.WaitGroup, or mutex locks to prevent race conditions).
-      4. Ensure defers are not inside tight loops and contexts (context.Context) are propagated correctly.
-      5. Output ONLY the refactored, formatted Go code block.
+      1. Enforce idiomatic error handling (check 'if err != nil' immediately).
+      2. Minimize heap allocations (optimize pointers, avoid interface conversion overhead).
+      3. Validate safety in concurrency blocks (channels, sync.WaitGroup, mutex locks).
+      4. Ensure defers are not inside tight loops.
+      Output ONLY formatted Go code.
 
   - name: fix-rve
     description: "Optimize React-Vite frontend rendering and Express API payload mapping"
     prompt: |
-      You are a Fullstack JavaScript/TypeScript Architect specializing in React (Vite-bundler) and Express.js REST APIs.
-      Review this code segment:
+      Review this fullstack code segment:
       {{{ input }}}
-
-      Refactor it to enforce these production constraints:
-      1. Frontend: Maximize render efficiency using structural component slicing, memoization hooks (`useMemo`/`useCallback`), and explicit type handling.
-      2. Backend: Enforce robust Express routing middleware, strict input validation, async error propagation catching, and uniform JSON response structures.
-      3. Security: Check for CORS configurations, XSS vectors, and clean environment variable abstraction.
-      4. Output ONLY the optimized code blocks. No explanations.
+      1. Frontend: Maximize render efficiency with component slicing, memoization, and explicit types.
+      2. Backend: Enforce robust Express routing middleware, input validation, and async error propagation.
+      3. Security: Check CORS configurations, XSS vectors, and environment variable abstraction.
+      Output ONLY optimized code.
 
   - name: fix-next
     description: "Tune Next.js App Router components for Server/Client boundaries and CLS"
     prompt: |
-      You are a Principal Frontend Engineer specializing in Next.js App Router architecture and React Server Components (RSC).
-      Analyze this file:
+      Analyze this Next.js App Router file:
       {{{ input }}}
-
-      Optimize the implementation details to address:
-      1. Explicit optimization of server/client boundaries (minimize `'use client'` usage and prop serialization bottlenecks).
-      2. Implementation of layout stability (prevent Cumulative Layout Shifts, integrate dynamic routing skeletons, and add loading primitives).
-      3. Native Next.js image components, server actions, and route cache revalidation tags.
-      4. Output ONLY the clean, ready-to-run file code block.
+      1. Optimize server/client boundaries (minimize 'use client' and prop serialization overhead).
+      2. Enforce layout stability (prevent CLS, integrate routing skeletons).
+      3. Leverage native Next.js image components, server actions, and cache revalidation tags.
+      Output ONLY ready-to-run file code.
 
   - name: fix-express
     description: "Refactor Express.js backends for memory-leak safety and fast route controllers"
     prompt: |
-      You are an expert Backend Engineer specializing in Node.js, Express, and modern asynchronous architectures.
-      Review this backend file:
+      Review this Express.js backend file:
       {{{ input }}}
-
-      Refactor it to achieve the following:
-      1. Wrap all asynchronous controller routes in robust try/catch blocks or pass errors cleanly via `next()`.
-      2. Eradicate common node memory leaks (unclosed event listeners, runaway global array allocations, or orphaned streams).
-      3. Verify database layer pooling optimization and explicit connection releases.
-      4. Output ONLY the updated, production-ready JavaScript/TypeScript code.
+      1. Wrap all asynchronous controller routes in try/catch or pass errors cleanly via next().
+      2. Eradicate node memory leaks (unclosed listeners, orphaned streams).
+      3. Verify database connection pooling and explicit releases.
+      Output ONLY production-ready code.
 
   - name: fix-django
     description: "Fix Django ORM N+1 query bottlenecks and secure views"
     prompt: |
-      You are a Senior Python Django core maintainer specializing in Django ORM scaling and DRF (Django REST Framework) security.
-      Analyze this code:
+      Analyze this Django/DRF code:
       {{{ input }}}
-
-      Rewrite the logic to enforce:
-      1. Resolution of N+1 database querying using explicit `select_related()` and `prefetch_related()` adjustments.
-      2. Security compliance (proper CSRF checking, decorator validations, permission classes, and query parameter sanitation).
-      3. Strict typing, lean querysets, and proper model manager abstractions.
-      4. Output ONLY the modified Python/Django code block.
+      1. Resolve N+1 database querying using select_related() and prefetch_related().
+      2. Enforce security compliance (CSRF, permission classes, parameter sanitization).
+      3. Implement strict typing and lean querysets.
+      Output ONLY modified Django code.
 
   - name: fix-flask
     description: "Optimize Flask request lifecycles, global context handling, and extensions"
     prompt: |
-      You are an elite Python developer specializing in micro-services, Flask app factory patterns, and WSGI optimization.
-      Review this code script:
+      Review this Flask code script:
       {{{ input }}}
-
-      Optimize it according to these micro-framework guidelines:
-      1. Eliminate thread-safety risks by ensuring proper usage of Flask global contexts (`g`, `request`, `session`).
-      2. Transition configuration values out of manual maps and into strict, structured class configurations.
-      3. Improve response efficiency by implementing proper blueprint isolation and JSON encoding hooks.
-      4. Output ONLY the refactored source code block.
+      1. Eliminate thread-safety risks by ensuring proper usage of Flask global contexts (g, request, session).
+      2. Transition configuration values into structured class configurations.
+      3. Improve response efficiency with blueprint isolation.
+      Output ONLY refactored source code.
 
   - name: fix-spring
     description: "Refactor Spring Boot dependency injection, JPA transaction scopes, and threads"
     prompt: |
-      You are an Enterprise Java Architect specializing in modern Spring Boot 3.x, Hibernate, and reactive system design.
-      Review this Java file:
+      Review this Spring Boot Java file:
       {{{ input }}}
-
-      Refactor it to align with enterprise design patterns:
-      1. Ensure optimal bean dependency management (prefer constructor injection over fields using `@Autowired`).
-      2. Audit JPA/Hibernate layer behavior (verify data transactions with correct `@Transactional` boundaries, read-only optimizations, and fetch styles).
-      3. Verify thread-safety, clear exception handling mappings using `@ControllerAdvice`, and consistent logging semantics.
-      4. Output ONLY the updated Java code block.
+      1. Ensure optimal bean dependency management (constructor injection over @Autowired).
+      2. Audit JPA/Hibernate behavior (@Transactional boundaries, read-only optimizations, fetch styles).
+      3. Verify thread safety and exception handling mappings via @ControllerAdvice.
+      Output ONLY updated Java code.
 
   - name: fix-rust
     description: "Refactor Rust code for zero-cost abstractions, lifetimes, and safety"
     prompt: |
-      You are a systems programmer specializing in idiomatic, high-performance Rust.
       Review this Rust source:
       {{{ input }}}
-
-      Optimize it using these strict guidelines:
-      1. Fix compilation issues tied to lifetimes, standard borrow-checker ownership boundaries, and mutability constraints.
-      2. Minimize allocation footprints (prefer referencing slices `&str`/`&[T]` instead of collecting types into heavy vectors or `String` buffers unnecessarily).
-      3. Enforce idiomatic error pattern handling via explicit `Result<T, E>` matching (minimize direct `unwrap()` or `panic!`).
-      4. Output ONLY the optimized, functional code within a raw Rust block.
+      1. Fix compilation issues tied to lifetimes, borrow checker ownership, and mutability.
+      2. Minimize allocation footprints (prefer slices &str/&[T] over heavy vectors or String buffers).
+      3. Enforce idiomatic error handling via explicit Result<T, E> matching.
+      Output ONLY optimized Rust code.
 
   - name: fix-scala
     description: "Optimize Scala code for immutable patterns, tail recursion, and types"
     prompt: |
-      You are a Principal Software Engineer specializing in Scala 3, type-level programming, and Akka/ZIO/Cats ecosystems.
       Analyze this Scala snippet:
       {{{ input }}}
-
-      Refactor it to enforce high-level functional concepts:
-      1. Swap manual mutation (`var`) loop structures with pure immutable patterns (`val`), higher-order expressions (`map`, `fold`), or `@tailrec` safe routines.
-      2. Optimize type class inferences, structural pattern matching conditions, and concurrent asynchronous allocations (`Future`/`IO`).
+      1. Swap manual mutation (var) loops with pure immutable patterns (val) or @tailrec routines.
+      2. Optimize type class inferences and pattern matching.
       3. Eliminate side effects from core computational blocks.
-      4. Output ONLY the clean, formatted Scala snippet block.
+      Output ONLY clean Scala code.
 
   - name: fix-cpp
     description: "Refactor C++ for Modern RAII standards, memory optimization, and pointer safety"
     prompt: |
-      You are an elite low-latency C++ expert working with C++20/C++23 standards.
-      Analyze this target routine:
+      Analyze this C++ routine:
       {{{ input }}}
-
-      Rewrite it to enforce modern high-performance design specifications:
-      1. Eliminate raw pointer manipulations and direct allocations (`new`/`delete`) in favor of strict RAII management strategies (`std::unique_ptr`/`std::shared_ptr`).
-      2. Optimize argument transmission mechanics by passing large structures via constant references (`const T&`) or applying rvalue moves (`std::move`).
-      3. Eliminate undefined compiler behaviors, memory access out-of-bound errors, race hazards, and data copy operations inside loops.
-      4. Output ONLY the updated, optimized C++ source code.
+      1. Eliminate raw pointer manipulations in favor of strict RAII (std::unique_ptr/std::shared_ptr).
+      2. Pass large structures via const references (const T&) or rvalue moves (std::move).
+      3. Eliminate undefined compiler behavior, out-of-bounds access, and redundant copies.
+      Output ONLY optimized C++ code.
 
   - name: fix-express-ts
     description: "Refactor Express TypeScript controllers for async safety and strict typings"
     prompt: |
-      You are a Principal Backend Engineer specializing in Node.js, Express, and strict TypeScript 5.x architecture.
-      Review this backend code segment:
+      Review this Express TypeScript backend code:
       {{{ input }}}
-
-      Refactor it using these strict production-grade guidelines:
-      1. Type Safety: Eliminate all 'any' types. Apply explicit, strict Typings for Express primitives: Request, Response, NextFunction, and custom Request params/body interfaces.
-      2. Async Boundary Handling: Wrap all asynchronous router controllers or middleware operations securely. Ensure runtime errors are automatically propagated out via 'next(error)' to prevent unhandled promise rejections or thread hangs.
-      3. Request Validation: Ensure incoming payloads, query strings, and headers are checked or cleanly mapped to type-safe validation structures.
-      4. Dependency Separation: Enforce loose coupling by cleanly separating data database/service layer interactions from the transport routing controllers.
-      5. Output Format: Output ONLY the updated, type-safe TypeScript code block. Do not provide explanations, setup prerequisites, or conversational markdown wrapper text.
+      1. Eliminate all 'any' types. Apply explicit typings for Request, Response, and NextFunction.
+      2. Wrap all asynchronous operations and propagate errors via next(error).
+      3. Validate request payloads and query strings against type-safe structures.
+      4. Separate data/service layers from transport routing controllers.
+      Output ONLY type-safe TypeScript code.
 
   - name: gen-zod-schema
     description: "Generate Zod runtime validation schemas from TypeScript interfaces"
     prompt: |
-      You are an expert security engineer specializing in data parsing and validation using Zod in Node.js/TypeScript.
       Review the following TypeScript interfaces or request payloads:
       {{{ input }}}
-
-      Generate equivalent, production-grade Zod validation schemas.
-      Guidelines:
-      1. Enforce strict checks (.strict()) to reject unrecognized properties on objects.
-      2. Add standard string optimizations where appropriate (e.g., .email(), .min(), .max(), or custom regex validation markers).
-      3. Make fields explicitly optional or nullable based on the input type signatures.
-      4. Output ONLY the raw TypeScript code block defining the Zod schemas and their inferred types. Do not include introductory conversational summaries.
+      Generate equivalent production-grade Zod validation schemas:
+      1. Enforce strict checks (.strict()) to reject unrecognized properties.
+      2. Add standard string optimizations (.email(), .min(), .max()).
+      3. Make fields explicitly optional or nullable based on input type signatures.
+      Output ONLY raw TypeScript code defining Zod schemas and inferred types.
 
   - name: gen-graphql-schema
     description: "Generate GraphQL schema definitions from TypeScript interfaces"
     prompt: |
-      You are a seasoned GraphQL expert specializing in data parsing and validation using Zod in Node.js/TypeScript.
       Review the following TypeScript interfaces or request payloads:
       {{{ input }}}
-
-      Generate equivalent, production-grade GraphQL schema definitions.
-      Guidelines:
-      1. Enforce strict checks (.strict()) to reject unrecognized properties on objects.
-      2. Add standard string optimizations where appropriate (e.g., .email(), .min(), .max(), or custom regex validation markers).
-      3. Make fields explicitly optional or nullable based on the input type signatures.
-      4. Output ONLY the raw TypeScript code block defining the GraphQL schema and its inferred types. Do not include introductory conversational summaries.
-
+      Generate equivalent production-grade GraphQL schema definitions:
+      1. Enforce non-nullable fields (!) where types require it.
+      2. Add description docstrings for types and fields.
+      3. Mirror interface inheritance and relationship mappings.
+      Output ONLY raw GraphQL schema definitions.

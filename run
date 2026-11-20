@@ -5,3 +5,5 @@ nvidia-ctk cdi list
 
 STORAGE_DRIVER=btrfs PODMAN_COMPOSE_PROVIDER=podman-compose podman compose up -d
 
+PODMAN_COMPOSE_PROVIDER=podman-compose podman compose exec ollama ollama pull qwen2.5-coder:7b
+
