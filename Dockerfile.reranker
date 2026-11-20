@@ -1,0 +1,53 @@
+# syntax=docker/dockerfile:1
+# ==============================================================================
+# Lightweight CPU Cross-Encoder Reranker Container for VS Code Continue RAG
+# Base: Debian-slim with Python 3.11
+# Execution: 100% CPU (PyTorch CPU wheel, Zero VRAM allocation)
+# ==============================================================================
+
+FROM docker.io/library/python:3.11-slim
+
+# Environment flags for Python and thread concurrency
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    HF_HOME=/root/.cache/huggingface \
+    TRANSFORMERS_CACHE=/root/.cache/huggingface \
+    MODEL_NAME=BAAI/bge-reranker-base \
+    DEVICE=cpu \
+    PORT=8080 \
+    HOST=0.0.0.0 \
+    OMP_NUM_THREADS=8 \
+    MKL_NUM_THREADS=8
+
+WORKDIR /app
+
+# Install minimal OS utilities for health check and download
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install CPU-only PyTorch wheel first
+# CRITICAL: Using the official CPU index avoids downloading ~2.5GB of CUDA/cuDNN binaries!
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
+# Install FastAPI runtime and sentence-transformers
+RUN pip install --no-cache-dir \
+    fastapi \
+    "uvicorn[standard]" \
+    pydantic \
+    sentence-transformers
+
+# Copy application server script
+COPY rerank_server.py /app/rerank_server.py
+
+# Expose HTTP port for Continue huggingface-tei provider
+EXPOSE 8080
+
+# Health check to verify model initialization
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD curl -f http://localhost:8080/health || exit 1
+
+# Start Uvicorn ASGI server
+CMD ["python", "/app/rerank_server.py"]

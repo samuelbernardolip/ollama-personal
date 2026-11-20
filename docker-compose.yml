@@ -1,4 +1,13 @@
+# ==============================================================================
+# Unified AI Inference & RAG Stack: Ollama, Open-WebUI & Local CPU Reranker
+# Hardware Target: AMD Ryzen 7 5800H (16GB RAM) + NVIDIA GTX 1650 (4GB VRAM)
+# Compatible with Docker Compose & Podman Compose (CDI / NVIDIA Container Toolkit)
+# ==============================================================================
+
 services:
+  # ----------------------------------------------------------------------------
+  # 1. Ollama Inference Engine (GPU-Accelerated)
+  # ----------------------------------------------------------------------------
   ollama:
     image: docker.io/ollama/ollama:latest
     container_name: ollama
@@ -11,7 +20,6 @@ services:
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       - OLLAMA_FLASH_ATTENTION=1
       - OLLAMA_KV_CACHE_TYPE=q8_0
-      #- HIP_VISIBLE_DEVICES=-1
     volumes:
       - /var/lib/ollama/data:/root/.ollama
     ports:
@@ -21,19 +29,51 @@ services:
     security_opt:
       - label=disable
 
+  # ----------------------------------------------------------------------------
+  # 2. Open-WebUI (Web Management Interface)
+  # ----------------------------------------------------------------------------
   open-webui:
     image: ghcr.io/open-webui/open-webui:main
     container_name: open-webui
     hostname: open-webui
     restart: unless-stopped
     ports:
+      # Host port 3000 mapped to container's internal port 8080 (No collision with reranker)
       - "127.0.0.1:3000:8080"
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
-      - WEBUI_AUTH=false # Set to true if you want a local login screen
-      - ENABLE_OPENAI_API=false # Prevents external API call attempts
+      - WEBUI_AUTH=false
+      - ENABLE_OPENAI_API=false
     volumes:
       - /var/lib/ollama/ui:/app/backend/data
     depends_on:
       - ollama
+    security_opt:
+      - label=disable
 
+  # ----------------------------------------------------------------------------
+  # 3. Continue CPU Cross-Encoder Reranker (100% CPU, 0 MB VRAM)
+  # ----------------------------------------------------------------------------
+  rerank-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.reranker
+    image: localhost/continue-reranker:latest
+    container_name: rerank-server
+    hostname: rerank-server
+    restart: unless-stopped
+    environment:
+      - MODEL_NAME=BAAI/bge-reranker-base
+      - DEVICE=cpu
+      - OMP_NUM_THREADS=8
+      - MKL_NUM_THREADS=8
+      - PORT=8080
+      - HOST=0.0.0.0
+    volumes:
+      # Persist Hugging Face weights on host so models are not re-downloaded
+      - /var/lib/ollama/rerank-cache:/root/.cache/huggingface
+    ports:
+      # Host port 8080 mapped to container port 8080 for Continue huggingface-tei provider
+      - "127.0.0.1:8080:8080"
+    security_opt:
+      - label=disable
