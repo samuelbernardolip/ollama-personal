@@ -1,4 +1,4 @@
-# Complete MCP Integration Guide for VS Code on Gentoo Linux: Antigravity, Claude Code, OpenAI Codex, and GitHub Copilot
+# Complete MCP Integration Guide for VS Code on Gentoo Linux: Antigravity, Claude Code, OpenAI Codex, GitHub Copilot, and Continue (Enterprise Edition)
 
 An enterprise-grade reference architecture for orchestrating multi-provider AI agents, Model Context Protocol (MCP) servers, and isolated developer identities under Gentoo Linux (rolling release, systemd profile, KDE Plasma 6 on Wayland) addressing both **Containerized** and **Native Ebuild** Google Cloud CLI environments.
 
@@ -297,19 +297,21 @@ EOF
 
 ### Step 4.2: Initial Login for Each Identity
 
+Authenticate each provider in its respective isolated storage directory on Gentoo:
+
 ```bash
 # 1. Google AI Pro OAuth login in Antigravity CLI
-/usr/bin/agy login
+/usr/bin/agy
 
 # 2. Anthropic Teams OAuth login in Claude Code
 /usr/bin/claude login
 
-# 3. OpenAI ChatGPT Plus login in ~/.codex
+# 3. OpenAI ChatGPT Plus login in ~/.codex (using /usr/bin/codex)
 /usr/bin/codex login
 
-# 4. OpenAI API Key login in ~/.codex-api
+# 4. OpenAI API Key login in ~/.codex-api (using /usr/bin/codex)
 mkdir -p ~/.codex-api
-CODEX_HOME="$HOME/.codex-api" /usr/bin/codex login --api-key "sk-proj-YOUR_OPENAI_API_KEY"
+printenv "sk-proj-YOUR_OPENAI_API_KEY" | CODEX_HOME="$HOME/.codex-api" /usr/bin/codex login
 
 # 5. GitHub Copilot CLI authorization
 /usr/bin/gh auth login --web -s copilot
@@ -509,14 +511,36 @@ Configure the shared MCP endpoints so Antigravity, Claude Code, and Codex can cr
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-github"],
       "env": {
-        "GITHUB_PERSONAL_ACCESS_TOKEN": "YOUR_GITHUB_PAT"
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"
       }
     }
   }
 }
 ```
 
-*Note: Replace `/home/YOUR_USERNAME` with your real `$HOME` directory and `YOUR_GCP_PROJECT_ID` with your Google Cloud Project ID.*
+*Note: Replace `/home/YOUR_USERNAME` with your actual `$HOME` path and `YOUR_GCP_PROJECT_ID` with your project name. If system paths are required, `claude` and `codex` resolve to `/usr/bin/claude` and `/usr/bin/codex`.*
+
+Gemini/Antigravity CLI does not support interactive `${input:...}` prompts, but it automatically expands `$VAR_NAME` or `${VAR_NAME}` from your shell environment or a `.gemini/.env` file.
+
+**Where to store the token:** Add `GITHUB_PERSONAL_ACCESS_TOKEN=YOUR_GITHUB_PAT` to `~/.gemini/.env` (or export it in your shell profile `~/.bashrc` or `~/.config/environment.d/github.conf`) so your config stays secret-free and safe to commit into version control.
+
+#### Complete Procedure to Create the GitHub Personal Access Token (PAT)
+
+Generate a GitHub Personal Access Token (PAT) in your [GitHub Developer Settings](https://github.com/settings/tokens) and supply it to your agents via the `GITHUB_PERSONAL_ACCESS_TOKEN` environment variable.
+
+For Copilot agents, Continue, and `@modelcontextprotocol/server-github`, a **Classic PAT (`ghp_...`)** is recommended because the MCP server uses OAuth scope filtering to automatically enable only the tools your token supports.
+
+##### Step-by-Step GitHub PAT Creation:
+1. **Open token settings**: Sign in to GitHub, click your profile picture (top-right), and navigate to **Settings** → **Developer settings** (bottom of left sidebar) → **Personal access tokens** → **Tokens (classic)**.
+2. **Generate a new token**: Click **Generate new token** → **Generate new token (classic)**.
+3. **Configure expiration and note**: Add a descriptive note (e.g., `Copilot MCP Agent - Gentoo Workstation`) and choose an expiration window (e.g., 90 days or custom).
+4. **Select required scopes**: Check the boxes that match what you want your agent to do:
+   * `repo` — Full access to private and public repositories (commits, branches, pull requests, issues). *(Use `public_repo` instead if you strictly work on public open-source repos).*
+   * `read:org` — Read organization and team membership (required for enterprise teams).
+   * `read:user` — Read user profile data.
+   * `workflow` *(optional)* — Update or inspect GitHub Actions CI/CD workflows.
+   * `project` *(optional)* — Read and manage GitHub Projects boards.
+5. **Copy the token immediately**: Click **Generate token** at the bottom and copy the `ghp_...` string right away—GitHub will never display it again.
 
 ### Step 6.2: Claude Code Global Configuration (`~/.claude.json`)
 
@@ -548,9 +572,9 @@ claude mcp add --scope user openai-codex-api \
   -e CODEX_HOME="$HOME/.codex-api" \
   -- /usr/bin/codex mcp-server
 
-# Register GitHub MCP Server
+# Register Native GitHub MCP Server via npx (inheriting GITHUB_PERSONAL_ACCESS_TOKEN from environment)
 claude mcp add --scope user github-mcp \
-  -e GITHUB_PERSONAL_ACCESS_TOKEN="YOUR_GITHUB_PAT" \
+  -e GITHUB_PERSONAL_ACCESS_TOKEN="${GITHUB_PERSONAL_ACCESS_TOKEN}" \
   -- npx -y @modelcontextprotocol/server-github
 ```
 
@@ -583,7 +607,7 @@ CLAUDE_CONFIG_DIR = "/home/YOUR_USERNAME/.claude"
 command = "npx"
 args = ["-y", "@modelcontextprotocol/server-github"]
 [mcp_servers.github-mcp.env]
-GITHUB_PERSONAL_ACCESS_TOKEN = "YOUR_GITHUB_PAT"
+GITHUB_PERSONAL_ACCESS_TOKEN = "${GITHUB_PERSONAL_ACCESS_TOKEN}"
 ```
 
 Sync configuration to the API directory:
@@ -639,6 +663,77 @@ GitHub Copilot operates in VS Code via official marketplace extensions. Configur
   }
 }
 ```
+
+This configuration enables prompting Copilot Chat to delegate complex architecture or verification tasks to your Google Cloud or Anthropic subagents:
+
+> *"@copilot Ask gemini-carbon-gcp to analyze this memory-safety profile, then have claude-fable-gcp suggest zero-cost abstractions."*
+
+### Step 7.2: Configure Continue VS Code Extension MCP Client (`~/.continue/config.yaml`)
+
+The Continue extension (`Continue.continue`) connects to the exact same MCP server pool and seamlessly supports environment variable expansion (`${VAR_NAME}`) to avoid baking secrets into `config.yaml`.
+
+Configure the `mcpServers` block in `~/.continue/config.yaml`:
+
+```yaml
+mcpServers:
+  # 1. Google Cloud Gemini 4 Carbon via Native agy-mcp-bridge
+  - name: gemini-carbon-gcp
+    command: /home/YOUR_USERNAME/.local/bin/agy-mcp-bridge
+    args: []
+    env:
+      GOOGLE_CLOUD_PROJECT: "YOUR_GCP_PROJECT_ID"
+      GOOGLE_CLOUD_LOCATION: "global"
+
+  # 2. Claude Fable 5.2 on Google Cloud Model Garden (Vertex AI ADC)
+  - name: claude-fable-gcp
+    command: /usr/bin/claude
+    args:
+      - mcp
+      - serve
+    env:
+      CLAUDE_CONFIG_DIR: "/home/YOUR_USERNAME/.claude-gcp"
+      CLAUDE_CODE_USE_VERTEX: "1"
+      CLOUD_ML_REGION: "global"
+      ANTHROPIC_VERTEX_PROJECT_ID: "YOUR_GCP_PROJECT_ID"
+      ANTHROPIC_MODEL: "claude-fable-5-2"
+      ANTHROPIC_SMALL_FAST_MODEL: "claude-sonnet-5-5"
+
+  # 3. Anthropic Teams (Interactive Claude Code)
+  - name: claude-teams
+    command: /usr/bin/claude
+    args:
+      - mcp
+      - serve
+    env:
+      CLAUDE_CONFIG_DIR: "/home/YOUR_USERNAME/.claude"
+
+  # 4. OpenAI Codex CLI via ChatGPT Plus Subscription (€23/mo OAuth)
+  - name: openai-codex-plus
+    command: /usr/bin/codex
+    args:
+      - mcp-server
+    env:
+      CODEX_HOME: "/home/YOUR_USERNAME/.codex"
+
+  # 5. OpenAI Codex CLI via On-Demand API Key (Pay-As-You-Go)
+  - name: openai-codex-api
+    command: /usr/bin/codex
+    args:
+      - mcp-server
+    env:
+      CODEX_HOME: "/home/YOUR_USERNAME/.codex-api"
+
+  # 6. GitHub MCP Server (Secret-Free via Environment Variable Expansion)
+  - name: github-mcp
+    command: npx
+    args:
+      - -y
+      - "@modelcontextprotocol/server-github"
+    env:
+      GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_PERSONAL_ACCESS_TOKEN}"
+```
+
+Because `GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_PERSONAL_ACCESS_TOKEN}"` dynamically pulls from your exported environment, your `config.yaml` remains completely free of credentials and can be safely committed to git repositories or shared across machines.
 
 ---
 
