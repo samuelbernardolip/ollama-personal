@@ -327,7 +327,7 @@ mcpServers:
       - -y
       - "@modelcontextprotocol/server-github"
     env:
-      GITHUB_PERSONAL_ACCESS_TOKEN: "YOUR_GITHUB_PAT"
+      GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_PERSONAL_ACCESS_TOKEN}"
 
 # ==============================================================================
 # 5. WORKSPACE TOOLS & EXECUTION POLICIES
