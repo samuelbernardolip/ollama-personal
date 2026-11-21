@@ -1,4 +1,4 @@
-# Complete MCP Integration Guide for VS Code on Gentoo Linux: Antigravity, Claude Code, OpenAI Codex, GitHub Copilot, and Continue (Enterprise Edition v5)
+# Complete MCP Integration Guide for VS Code on Gentoo Linux: Antigravity, Claude Code, OpenAI Codex, GitHub Copilot, Continue, and GitLab Multi-Instance Mesh (Enterprise Edition v7)
 
 An enterprise-grade reference architecture for orchestrating multi-provider AI agents, Model Context Protocol (MCP) servers, and isolated developer identities under Gentoo Linux (rolling release, systemd profile, KDE Plasma 6 on Wayland) addressing both **Containerized** and **Native Ebuild** Google Cloud CLI environments.
 
@@ -21,6 +21,7 @@ Both architectures guarantee identical, hermetic isolation across all four provi
 5. **OpenAI ChatGPT Plus (€23/mo Consumer OAuth)**: Flat-rate consumer access driving the OpenAI Codex CLI and VS Code extension (`openai-codex-plus`), isolated within `~/.codex`.
 6. **OpenAI API (Pay-As-You-Go)**: On-demand per-token API billing used when Plus rate limits are exhausted or for automated background tasks, isolated within `~/.codex-api`.
 7. **GitHub Copilot (Student / Individual / Enterprise)**: GitHub's code intelligence engine operating alongside local MCP servers, paired with a native Node or containerized GitHub MCP server for workspace awareness.
+8. **GitLab Multi-Instance Mesh (SaaS, Enterprise & Institutional Infrastructure)**: Seamless multi-instance GitLab integration connecting agents to five distinct developer and administrative platforms: **GitLab.com** (SaaS, 19.5+), **gitlab.lip.pt** (LIP production, 19.5.3), **gitlab-admin.lip.pt** (LIP admin, 19.5.3), **gitlab.legacy.example.org** (Legacy, 18.2.8), and **gitlab-admin.legacy.example.org** (Admin legacy, 16.x latest). Modern instances communicate via native remote MCP (`mcp-remote`) with URL-isolated OAuth caching, while legacy instances communicate via local stdio `@zereight/mcp-gitlab` servers with dedicated `.env` credential files. Unique tool-name prefixes (`glcom_`, `gllip_`, `gladminlip_`, `gllegacy_`, `gladminleg_`) prevent tool namespace collisions across repositories.
 
 ### Complete Provider and Billing Matrix
 
@@ -33,6 +34,11 @@ Both architectures guarantee identical, hermetic isolation across all four provi
 | **OpenAI ChatGPT Plus** | Codex IDE / `codex-plus` | Terminal OAuth (ChatGPT Web) | `~/.codex/` | `openai-codex-plus` | Flat €23/month (subject to cancellation) |
 | **OpenAI API** | Codex IDE / `codex-api` | Secret API Key (`sk-proj-...`) | `~/.codex-api/` | `openai-codex-api` | Pay-as-you-go per token balance |
 | **GitHub Copilot** | Copilot Chat VS Code | GitHub OAuth Token | `~/.config/github-copilot/` | `github-mcp` | Included via Student Pack / Monthly seat |
+| **GitLab.com** | Antigravity / Claude / Codex / Copilot / Continue | Native Remote MCP (`mcp-remote` via OAuth) | `~/.mcp-auth/` | `gitlab-com` | Included via SaaS Free/Premium (`glcom_` prefix) |
+| **GitLab LIP (19.5.3)** | Antigravity / Claude / Codex / Copilot / Continue | Native Remote MCP (`mcp-remote` via OAuth/PAT) | `~/.mcp-auth/` | `gitlab-lip` | Institutional production instance (`gllip_` prefix) |
+| **GitLab Admin LIP (19.5.3)** | Antigravity / Claude / Codex / Copilot / Continue | Native Remote MCP (`mcp-remote` via OAuth/PAT) | `~/.mcp-auth/` | `gitlab-admin-lip` | Institutional admin instance (`gladminlip_` prefix) |
+| **GitLab Legacy (18.2.8)** | Antigravity / Claude / Codex / Copilot / Continue | Stdio MCP (`@zereight/mcp-gitlab`) + PAT | `~/.config/antigravity-mcp/` | `gitlab-legacy` | Self-hosted legacy instance (`gllegacy_` prefix) |
+| **GitLab Admin Legacy (16 latest)** | Antigravity / Claude / Codex / Copilot / Continue | Stdio MCP (`@zereight/mcp-gitlab`) + PAT | `~/.config/antigravity-mcp/` | `gitlab-admin-legacy` | Self-hosted legacy admin instance (`gladminleg_` prefix) |
 
 ---
 
@@ -265,9 +271,13 @@ To prevent identity conflicts, each service maintains an independent configurati
 ```
 /home/$USER/
 ├── .config/
+│   ├── antigravity-mcp/             ← Dedicated .env files for legacy/PAT GitLab instances (0700)
+│   │   ├── gitlab-legacy.env         ← PAT, URL & tool prefix for gitlab.legacy.example.org (18.2.8)
+│   │   └── gitlab-admin-legacy.env          ← PAT, URL & tool prefix for gitlab-admin.legacy.example.org (16 latest)
 │   ├── gcloud/                      ← ADC tokens (Gemini 4 Carbon & Fable 5.2)
 │   ├── gcloud-compose/              ← (Optional) Compose definition if using Section 3A
 │   └── code-flags.conf              ← VS Code Wayland & KWallet 6 flags
+├── .mcp-auth/                       ← mcp-remote automatic OAuth token cache (gitlab.com, lip.pt)
 ├── .gemini/
 │   ├── config/
 │   │   ├── config.json              ← Antigravity core settings ("enableAdc": false)
@@ -315,6 +325,32 @@ printenv "sk-proj-YOUR_OPENAI_API_KEY" | CODEX_HOME="$HOME/.codex-api" /usr/bin/
 
 # 5. GitHub Copilot CLI authorization
 /usr/bin/gh auth login --web -s copilot
+
+# 6. Initialize Isolated Credential Directory for Legacy GitLab Instances (PAT)
+mkdir -p ~/.config/antigravity-mcp ~/.mcp-auth
+chmod 700 ~/.config/antigravity-mcp ~/.mcp-auth
+
+# Configure gitlab.legacy.example.org (v18.2.8)
+cat << 'EOF' > ~/.config/antigravity-mcp/gitlab-legacy.env
+GITLAB_PERSONAL_ACCESS_TOKEN=glpat-YOUR_LEGACY_TOKEN
+GITLAB_API_URL=https://gitlab.legacy.example.org
+GITLAB_TOOL_PREFIX=gllegacy_
+GITLAB_TOOLSETS=issues,merge_requests,repositories,pipelines,wiki
+# Optional: Enforce strict read-only mode if write operations should be blocked:
+# GITLAB_PERMISSION_MODE=readonly
+EOF
+chmod 600 ~/.config/antigravity-mcp/gitlab-legacy.env
+
+# Configure gitlab-admin.legacy.example.org (v16 latest)
+cat << 'EOF' > ~/.config/antigravity-mcp/gitlab-admin-legacy.env
+GITLAB_PERSONAL_ACCESS_TOKEN=glpat-YOUR_ADMIN_LEGACY_TOKEN
+GITLAB_API_URL=https://gitlab-admin.legacy.example.org
+GITLAB_TOOL_PREFIX=gladminleg_
+GITLAB_TOOLSETS=issues,merge_requests,repositories,pipelines,wiki
+# Optional: Enforce strict read-only mode if write operations should be blocked:
+# GITLAB_PERMISSION_MODE=readonly
+EOF
+chmod 600 ~/.config/antigravity-mcp/gitlab-admin-legacy.env
 ```
 
 ---
@@ -440,7 +476,7 @@ for line in sys.stdin:
         env["GOOGLE_GENAI_USE_VERTEXAI"] = "True"
 
         proc = subprocess.run(
-            [AGY_BIN, "--model", model, "-p", prompt],
+            [AGY_BIN, "-m", model, "-p", prompt],
             env=env, capture_output=True, text=True
         )
         output = proc.stdout if proc.returncode == 0 else f"Execution Error ({proc.returncode}): {proc.stderr}"
@@ -643,7 +679,53 @@ For Copilot agents, Continue, and `@modelcontextprotocol/server-github`, a **Cla
    * `read:user` — Read user profile data.
    * `workflow` *(optional)* — Update or inspect GitHub Actions CI/CD workflows.
    * `project` *(optional)* — Read and manage GitHub Projects boards.
-5. **Copy the token immediately**: Click **Generate token** at the bottom and copy the `ghp_...` string right away—GitHub will never display it again.
+5. Copy the token immediately. Click Generate token at the bottom and copy the ghp_... string right away---GitHub will not display it again.
+
+#### Complete Architecture & Configuration Guide for GitLab Multi-Instance Mesh
+
+Connecting multiple GitLab servers across distinct versions requires a hybrid architecture tailored to each instance's underlying MCP capabilities:
+
+##### 1. Modern Instances (GitLab 19.5+): `gitlab.com`, `gitlab.lip.pt` & `gitlab-admin.lip.pt`
+* **Native Remote Endpoint**: GitLab 19.5+ includes a native `/api/v4/mcp` endpoint.
+* **Client Architecture (`mcp-remote`)**: The `mcp-remote` proxy acts as a local stdio client that speaks to remote HTTP MCP endpoints, implementing OAuth 2.0 Dynamic Client Registration.
+* **Automatic Browser Login**: On the first tool invocation, `mcp-remote` intercepts the 401 challenge, opens your default web browser to the GitLab login screen, and caches the granted session token in `~/.mcp-auth/<url-hash>/`.
+* **Toolset Optimization**: GitLab's MCP endpoint exposes groups of tools controlled by the `X-Gitlab-Enabled-Mcp-Server-Toolsets` HTTP header. By declaring `core,merge_requests,work_items,repository,ci,wikis,code_security`, you retain all essential developer tools while enabling opt-in `wikis` and `code_security`, and trimming `duo_agent_platform` (which is unavailable or unneeded on standard/free accounts, saving ~20k tokens from the agent context window). Note that `meta` (e.g. `get_mcp_server_version`) is always included automatically.
+* **Tool-Name Prefixes**: Declaring `X-Gitlab-Mcp-Server-Tool-Name-Prefix:<prefix>_` prefixes every tool exposed by that server:
+  * `gitlab.com` -> `glcom_` (e.g. `glcom_list_projects`, `glcom_get_file_contents`)
+  * `gitlab.lip.pt` -> `gllip_` (e.g. `gllip_list_projects`, `gllip_create_merge_request`)
+  * `gitlab-admin.lip.pt` -> `gladminlip_` (e.g. `gladminlip_list_projects`, `gladminlip_list_users`)
+  This completely prevents tool namespace collisions when multiple GitLab instances are loaded into the same agent session.
+
+##### 2. Legacy Instances (GitLab < 19.5): `gitlab.legacy.example.org` (18.2.8) & `gitlab-admin.legacy.example.org` (16.x latest)
+* **API Compatibility**: GitLab 18.2.8 and 16.x predate the native `/api/v4/mcp` endpoint.
+* **Client Architecture (`@zereight/mcp-gitlab`)**: Connects to the standard GitLab REST/GraphQL API via the `@zereight/mcp-gitlab` stdio MCP server.
+* **Zero Secret Leakage via POSIX Subshells**: Sourcing the `.env` file via `sh -c 'set -a && . "$HOME/.config/antigravity-mcp/<name>.env" && set +a && exec npx -y @zereight/mcp-gitlab'` guarantees that:
+  1. Secrets (`GITLAB_PERSONAL_ACCESS_TOKEN`) are confined strictly to that child process and never leak into global environment tables.
+  2. The `exec` call replaces the shell with the Node runtime, ensuring clean termination when sessions close.
+  3. `GITLAB_TOOL_PREFIX=gllegacy_` and `GITLAB_TOOL_PREFIX=gladminleg_` isolate legacy tools cleanly.
+  4. Setting `GITLAB_TOOLSETS=issues,merge_requests,repositories,pipelines,wiki` loads the exact essential tools while saving ~50k tokens compared to `GITLAB_TOOLSETS=all`.
+
+##### 3. How to Create Personal Access Tokens (PAT) for Legacy Instances
+1. Sign in to your self-hosted GitLab instance (`https://gitlab.legacy.example.org` or `https://gitlab-admin.legacy.example.org`).
+2. Go to **User Settings** (or click your profile avatar) -> **Access Tokens**.
+3. Click **Add new token**, provide a descriptive name (e.g. `VSCode-Agent-MCP`), and set an expiration window.
+4. Select the necessary scopes:
+   * `api` — Full read/write access to repository, issues, merge requests, and pipelines.
+   * `read_api` — Read-only access to projects and issues. (If selected, also add `GITLAB_PERMISSION_MODE=readonly` to the `.env` file).
+5. Click **Create personal access token** and copy the `glpat-...` string immediately into your `.env` file (`~/.config/antigravity-mcp/gitlab-legacy.env` or `gitlab-admin-legacy.env`).
+
+##### 4. Institutional SSL / Custom CA Certificates
+If internal academic instances (e.g., `lip.pt`, `example.org`) use private or enterprise root certificates, Node.js can be configured to trust your host certificates by adding `NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt` to the `.env` files or exporting it in your environment.
+
+
+#### Configuration Path Resolution and Compatibility Symlink
+
+Depending on the release channel of the Google Antigravity VS Code extension (`Google.google-antigravity`), configuration discovery may check either `~/.gemini/config/mcp_config.json` or `~/.gemini/antigravity/mcp_config.json`. To guarantee automatic detection across all extension updates, create a symlink:
+
+```bash
+mkdir -p ~/.gemini/antigravity
+ln -sf ~/.gemini/config/mcp_config.json ~/.gemini/antigravity/mcp_config.json
+```
 
 ### Step 6.2: Claude Code Global Configuration (`~/.claude.json`)
 
@@ -679,6 +761,32 @@ claude mcp add --scope user openai-codex-api \
 claude mcp add --scope user github-mcp \
   -e GITHUB_PERSONAL_ACCESS_TOKEN="${GITHUB_PERSONAL_ACCESS_TOKEN}" \
   -- npx -y @modelcontextprotocol/server-github
+
+# Register GitLab.com (SaaS, 19.5+) via mcp-remote
+claude mcp add --scope user gitlab-com \
+  -- npx -y mcp-remote https://gitlab.com \
+  --header X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security \
+  --header X-Gitlab-Mcp-Server-Tool-Name-Prefix:glcom_
+
+# Register GitLab LIP (19.5.3) via mcp-remote
+claude mcp add --scope user gitlab-lip \
+  -- npx -y mcp-remote https://gitlab.lip.pt \
+  --header X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security \
+  --header X-Gitlab-Mcp-Server-Tool-Name-Prefix:gllip_
+
+# Register GitLab Admin LIP (19.5.3) via mcp-remote
+claude mcp add --scope user gitlab-admin-lip \
+  -- npx -y mcp-remote https://gitlab-admin.lip.pt \
+  --header X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security \
+  --header X-Gitlab-Mcp-Server-Tool-Name-Prefix:gladminlip_
+
+# Register GitLab Legacy (18.2.8) via @zereight/mcp-gitlab + .env
+claude mcp add --scope user gitlab-legacy \
+  -- sh -c 'set -a && . "$HOME/.config/antigravity-mcp/gitlab-legacy.env" && set +a && exec npx -y @zereight/mcp-gitlab'
+
+# Register GitLab Admin Legacy (16 latest) via @zereight/mcp-gitlab + .env
+claude mcp add --scope user gitlab-admin-legacy \
+  -- sh -c 'set -a && . "$HOME/.config/antigravity-mcp/gitlab-admin-legacy.env" && set +a && exec npx -y @zereight/mcp-gitlab'
 ```
 
 ### Step 6.3: OpenAI Codex Global Configuration (`~/.codex/config.toml` & `~/.codex-api/config.toml`)
@@ -711,6 +819,56 @@ command = "npx"
 args = ["-y", "@modelcontextprotocol/server-github"]
 [mcp_servers.github-mcp.env]
 GITHUB_PERSONAL_ACCESS_TOKEN = "${GITHUB_PERSONAL_ACCESS_TOKEN}"
+
+[mcp_servers.gitlab-com]
+command = "npx"
+args = [
+  "-y",
+  "mcp-remote",
+  "https://gitlab.com",
+  "--header",
+  "X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security",
+  "--header",
+  "X-Gitlab-Mcp-Server-Tool-Name-Prefix:glcom_"
+]
+
+[mcp_servers.gitlab-lip]
+command = "npx"
+args = [
+  "-y",
+  "mcp-remote",
+  "https://gitlab.lip.pt",
+  "--header",
+  "X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security",
+  "--header",
+  "X-Gitlab-Mcp-Server-Tool-Name-Prefix:gllip_"
+]
+
+[mcp_servers.gitlab-admin-lip]
+command = "npx"
+args = [
+  "-y",
+  "mcp-remote",
+  "https://gitlab-admin.lip.pt",
+  "--header",
+  "X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security",
+  "--header",
+  "X-Gitlab-Mcp-Server-Tool-Name-Prefix:gladminlip_"
+]
+
+[mcp_servers.gitlab-legacy]
+command = "sh"
+args = [
+  "-c",
+  "set -a && . "$HOME/.config/antigravity-mcp/gitlab-legacy.env" && set +a && exec npx -y @zereight/mcp-gitlab"
+]
+
+[mcp_servers.gitlab-admin-legacy]
+command = "sh"
+args = [
+  "-c",
+  "set -a && . "$HOME/.config/antigravity-mcp/gitlab-admin-legacy.env" && set +a && exec npx -y @zereight/mcp-gitlab"
+]
 ```
 
 Sync configuration to the API directory:
@@ -761,6 +919,56 @@ GitHub Copilot operates in VS Code via official marketplace extensions. Configur
       "env": {
         "CODEX_HOME": "/home/YOUR_USERNAME/.codex"
       }
+    },
+    "gitlab-com": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://gitlab.com",
+        "--header",
+        "X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security",
+        "--header",
+        "X-Gitlab-Mcp-Server-Tool-Name-Prefix:glcom_"
+      ]
+    },
+    "gitlab-lip": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://gitlab.lip.pt",
+        "--header",
+        "X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security",
+        "--header",
+        "X-Gitlab-Mcp-Server-Tool-Name-Prefix:gllip_"
+      ]
+    },
+    "gitlab-admin-lip": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://gitlab-admin.lip.pt",
+        "--header",
+        "X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security",
+        "--header",
+        "X-Gitlab-Mcp-Server-Tool-Name-Prefix:gladminlip_"
+      ]
+    },
+    "gitlab-legacy": {
+      "command": "sh",
+      "args": [
+        "-c",
+        "set -a && . "$HOME/.config/antigravity-mcp/gitlab-legacy.env" && set +a && exec npx -y @zereight/mcp-gitlab"
+      ]
+    },
+    "gitlab-admin-legacy": {
+      "command": "sh",
+      "args": [
+        "-c",
+        "set -a && . "$HOME/.config/antigravity-mcp/gitlab-admin-legacy.env" && set +a && exec npx -y @zereight/mcp-gitlab"
+      ]
     }
   }
 }
@@ -831,6 +1039,56 @@ mcpServers:
       - "@modelcontextprotocol/server-github"
     env:
       GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_PERSONAL_ACCESS_TOKEN}"
+
+  # 7. GitLab.com (SaaS, GitLab 19.5+) via Native Remote MCP
+  - name: gitlab-com
+    command: npx
+    args:
+      - -y
+      - mcp-remote
+      - https://gitlab.com
+      - --header
+      - X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security
+      - --header
+      - X-Gitlab-Mcp-Server-Tool-Name-Prefix:glcom_
+
+  # 8. GitLab LIP (Self-Hosted Production, GitLab 19.5.3) via Native Remote MCP
+  - name: gitlab-lip
+    command: npx
+    args:
+      - -y
+      - mcp-remote
+      - https://gitlab.lip.pt
+      - --header
+      - X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security
+      - --header
+      - X-Gitlab-Mcp-Server-Tool-Name-Prefix:gllip_
+
+  # 9. GitLab Admin LIP (Self-Hosted Admin, GitLab 19.5.3) via Native Remote MCP
+  - name: gitlab-admin-lip
+    command: npx
+    args:
+      - -y
+      - mcp-remote
+      - https://gitlab-admin.lip.pt
+      - --header
+      - X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security
+      - --header
+      - X-Gitlab-Mcp-Server-Tool-Name-Prefix:gladminlip_
+
+  # 10. GitLab Legacy (Self-Hosted Legacy, GitLab 18.2.8) via @zereight/mcp-gitlab + .env
+  - name: gitlab-legacy
+    command: sh
+    args:
+      - -c
+      - set -a && . "$HOME/.config/antigravity-mcp/gitlab-legacy.env" && set +a && exec npx -y @zereight/mcp-gitlab
+
+  # 11. GitLab Admin Legacy (Self-Hosted Legacy Admin, GitLab 16.x) via @zereight/mcp-gitlab + .env
+  - name: gitlab-admin-legacy
+    command: sh
+    args:
+      - -c
+      - set -a && . "$HOME/.config/antigravity-mcp/gitlab-admin-legacy.env" && set +a && exec npx -y @zereight/mcp-gitlab
 ```
 
 Because `GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_PERSONAL_ACCESS_TOKEN}"` dynamically pulls from your exported environment, your `config.yaml` remains completely free of credentials and can be safely committed to git repositories or shared across machines.
@@ -1039,14 +1297,56 @@ Run the server health check:
 claude mcp list
 ```
 
-Verify that all five configured servers (`gemini-carbon-gcp`, `claude-fable-gcp`, `openai-codex-plus`, `openai-codex-api`, `github-mcp`) display `Connected`.
+Verify that all 11 configured servers (`gemini-carbon-gcp`, `claude-fable-gcp`, `openai-codex-plus`, `openai-codex-api`, `github-mcp`, `gitlab-com`, `gitlab-lip`, `gitlab-admin-lip`, `gitlab-legacy`, `gitlab-admin-legacy`) display `Connected`.
 
-### Step 10.3: Inspect Live Indicators in VS Code
+### Step 10.3: Inspect Live Indicators and Utilize MCP Servers in VS Code Antigravity
 
-1. Launch VS Code from KRunner or your application menu.
-2. Open Antigravity (Activity Bar or `Ctrl+L`) and execute `/mcp`. Confirm all servers show green status rings.
-3. Open Claude Code (`Ctrl+Shift+P` -> `Claude Code: Open in Side Bar`) and execute `/mcp` in the prompt box. Verify all servers report active.
-4. Open GitHub Copilot Chat (`Ctrl+Alt+I`) and verify tool availability.
+#### Understanding the Antigravity UI Model
+In the Google Antigravity VS Code extension, MCP servers do **not** appear as separate explorer sidebars, file trees, or dedicated window panes. Instead, they are embedded directly into the Antigravity agent execution harness as background callable tools.
+
+#### Viewing and Inspecting MCP Servers in the UI
+1. **The `/mcp` Slash Command**:
+   * Open the Antigravity chat panel by clicking the Antigravity icon in the Activity Bar or pressing **`Ctrl+L`**.
+   * In the chat prompt input, type **`/mcp`** and press **Enter**.
+   * Antigravity opens a live diagnostic dashboard displaying connection status rings for every registered server (`gemini-carbon-gcp`, `claude-fable-gcp`, `claude-teams`, `openai-codex-plus`, `openai-codex-api`, `github-mcp`):
+     * **Green Ring**: Server is healthy, connected, and tool schemas are successfully registered.
+     * **Amber Ring**: Server process is initializing or undergoing protocol handshake.
+     * **Red Ring**: Server process terminated, binary not found, or JSON-RPC handshake failed. Clicking the server reveals stdout/stderr logs.
+2. **The Panel Header Tools / MCP Icon**:
+   * In the top-right header of the Antigravity chat panel, click the **Tools / Plug icon** to open the registered tools modal and inspect active capabilities.
+
+#### How to Use MCP Servers in Chat Conversations
+* **Explicit Subagent Delegation**:
+  Prompt the agent directly to route requests through specific subagent tools:
+  * *"Ask `gemini-carbon-gcp` to audit this system architecture using model `gemini-4-carbon`."*
+  * *"Have `claude-fable-gcp` review the diff proposed by `gemini-carbon-gcp` before applying changes."*
+  * *"Use `openai-codex-plus` (via `ask_codex`) to provide a second-opinion refactoring for this module."*
+  * *"Query `github-mcp` to list open pull requests and recent commit issues in this repository."*
+* *"Query `gitlab-com` using tool `glcom_list_projects` to check my recent repositories."*
+* *"Using `gitlab-lip` (tool `gllip_list_merge_requests`), review open MRs targeting production."*
+* *"Inspect the latest CI pipeline failures on `gitlab.legacy.example.org` via `gitlab-legacy` (tool `gllegacy_list_pipelines`)."*
+* *"Search recent issues on Admin GitLab using `gitlab-admin-legacy` (tool `gladminleg_list_issues`)."*
+* **Autonomous Tool Execution**:
+  When prompted with complex workflows (e.g. cross-repository analysis or deep static audits), the active Antigravity model autonomously selects and executes the appropriate MCP tool, surfacing an approval or execution card in the conversation stream.
+
+#### Troubleshooting: If `/mcp` is Empty or Servers Fail to Connect
+1. **Path Symlink**: Ensure both configuration paths point to your active configuration:
+   ```bash
+   mkdir -p ~/.gemini/antigravity
+   ln -sf ~/.gemini/config/mcp_config.json ~/.gemini/antigravity/mcp_config.json
+   ```
+2. **Absolute Binary Paths**: Desktop launcher environments (KDE Plasma Wayland / systemd) do not inherit shell profile additions to `$PATH`. Ensure all `command` entries in `mcp_config.json` use full absolute paths (`/home/YOUR_USERNAME/.local/bin/agy-mcp-bridge`, `/home/YOUR_USERNAME/.local/bin/codex-mcp-bridge`, `/usr/bin/claude`, `/usr/bin/npx`).
+3. **Execution Permissions**: Verify bridge scripts are executable:
+   ```bash
+   chmod +x ~/.local/bin/agy-mcp-bridge ~/.local/bin/codex-mcp-bridge
+   ```
+4. **Reload Window**: After modifying `mcp_config.json`, reload VS Code to re-initialize the MCP client:
+   * Press **`Ctrl+Shift+P`** → run **`Developer: Reload Window`**.
+
+### Step 10.4: Verify Secondary Extension Status (Claude Code, Continue & Copilot)
+1. **Claude Code**: Open Claude Code sidebar (**`Ctrl+Shift+P`** → `Claude Code: Open in Side Bar`) and execute `/mcp` in the prompt box. All five servers should report `Connected`.
+2. **Continue Extension**: Open the Continue sidebar (**`Ctrl+L`**). The configured MCP tools will display active status in the prompt tool picker.
+3. **GitHub Copilot Chat**: Open Copilot Chat (**`Ctrl+Alt+I`**) and verify tool availability.
 
 ---
 
