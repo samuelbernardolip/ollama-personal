@@ -37,7 +37,8 @@ tabAutocompleteModel:
 embeddingsProvider:
   provider: ollama
   model: nomic-embed-text
-  apiBase: http://localhost:11434
+  apiBase: http://127.0.0.1:11435
+  maxEmbeddingChunkSize: 512
 
 # 🎯 Search result ranking optimization (Runs on CPU via TEI or FastAPI on port 8080)
 rerankerProvider:
@@ -249,6 +250,36 @@ models:
     roles:
       - rerank
 
+  # 💻 LAPTOP DISK WORKER (Phase 1: Local File Extraction on GTX 1650 4GB)
+  - name: Laptop-Worker-3B
+    provider: openai
+    model: qwen2.5-coder:3b-instruct-q8_0
+    apiBase: http://localhost:11434/v1
+    roles:
+      - chat
+      - edit
+    contextLength: 4096
+    requestOptions:
+      extraBodyProperties:
+        options:
+          num_ctx: 4096
+          num_predict: 2048
+
+  # 🖥️ OFFICE DISK SYNTHESIZER (Phase 1: Cross-Repo Synthesis on RTX 3050 8GB)
+  - name: Office-Synthesizer-7B
+    provider: openai
+    model: qwen2.5-coder:7b-instruct-q4_K_M
+    apiBase: http://localhost:11434/v1
+    roles:
+      - chat
+      - edit
+    contextLength: 8192
+    requestOptions:
+      extraBodyProperties:
+        options:
+          num_ctx: 8192
+          num_predict: 4096
+
 # ==============================================================================
 # 3. CONTEXT PROVIDERS & RAG OPTIMIZATION (GTX 1650 4GB BUFFER)
 # ==============================================================================
@@ -283,7 +314,7 @@ mcpServers:
 
   # 2. Claude Fable 5.2 on Google Cloud Model Garden (Vertex AI ADC)
   - name: claude-fable-gcp
-    command: claude
+    command: /usr/bin/claude
     args:
       - mcp
       - serve
@@ -297,7 +328,7 @@ mcpServers:
 
   # 3. Anthropic Teams (Interactive Claude Code)
   - name: claude-teams
-    command: claude
+    command: /usr/bin/claude
     args:
       - mcp
       - serve
@@ -318,7 +349,7 @@ mcpServers:
     env:
       CODEX_HOME: "/home/YOUR_USERNAME/.codex-api"
 
-  # 6. GitHub MCP Server (Native Host Node Runtime, Zero Containers)
+  # 6. GitHub MCP Server (Secret-Free via Environment Variable Expansion)
   - name: github-mcp
     command: npx
     args:
@@ -326,6 +357,56 @@ mcpServers:
       - "@modelcontextprotocol/server-github"
     env:
       GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_PERSONAL_ACCESS_TOKEN}"
+
+  # 7. GitLab.com (SaaS, GitLab 19.5+) via Native Remote MCP
+  - name: gitlab-com
+    command: npx
+    args:
+      - -y
+      - mcp-remote
+      - https://gitlab.com
+      - --header
+      - X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security
+      - --header
+      - X-Gitlab-Mcp-Server-Tool-Name-Prefix:glcom_
+
+  # 8. GitLab LIP (Self-Hosted Production, GitLab 19.5.3) via Native Remote MCP
+  - name: gitlab-lip
+    command: npx
+    args:
+      - -y
+      - mcp-remote
+      - https://gitlab.lip.pt
+      - --header
+      - X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security
+      - --header
+      - X-Gitlab-Mcp-Server-Tool-Name-Prefix:gllip_
+
+  # 9. GitLab Admin LIP (Self-Hosted Admin, GitLab 19.5.3) via Native Remote MCP
+  - name: gitlab-admin-lip
+    command: npx
+    args:
+      - -y
+      - mcp-remote
+      - https://gitlab-admin.lip.pt
+      - --header
+      - X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security
+      - --header
+      - X-Gitlab-Mcp-Server-Tool-Name-Prefix:gladminlip_
+
+  # 10. GitLab ACNCA (Self-Hosted Legacy, GitLab 18.2.8) via @zereight/mcp-gitlab + .env
+  - name: gitlab-acnca
+    command: sh
+    args:
+      - -c
+      - set -a && . "$HOME/.config/antigravity-mcp/gitlab-acnca.env" && set +a && exec npx -y @zereight/mcp-gitlab
+
+  # 11. GitLab Admin ACNCA (Self-Hosted Legacy Admin, GitLab 16.x) via @zereight/mcp-gitlab + .env
+  - name: gitlab-admin-acnca
+    command: sh
+    args:
+      - -c
+      - set -a && . "$HOME/.config/antigravity-mcp/gitlab-admin-acnca.env" && set +a && exec npx -y @zereight/mcp-gitlab
 
 # ==============================================================================
 # 5. WORKSPACE TOOLS & EXECUTION POLICIES
@@ -618,3 +699,29 @@ prompts:
       2. Add description docstrings for types and fields.
       3. Mirror interface inheritance and relationship mappings.
       Output ONLY raw GraphQL schema definitions.
+
+  # --- Pre-Processing & Architectural Extraction (Cost-Optimization Pipeline) ---
+  - name: digest
+    description: "Extract single-file purpose, triggers, endpoints, and dependencies into dense digest"
+    prompt: |
+      Analyze this file for architectural migration:
+      {{{ input }}}
+      Extract and format concisely into Markdown:
+      1. Primary Responsibility (1-2 sentences)
+      2. Entrypoints / Triggers (CLI commands, event hooks, or API routes)
+      3. Critical Internal & External Dependencies
+      4. Coupled State, Storage, or Environmental Assumptions
+      5. Potential Failure Modes or Breaking Constraints
+      Be extremely dense and concise. No conversational padding.
+
+  - name: synthesize
+    description: "Consolidate multi-file digests into unified migration specification"
+    prompt: |
+      Review the collected architectural digests below:
+      {{{ input }}}
+      Synthesize them into a unified MASTER_ARCHITECTURE_SPEC.md covering:
+      1. System Topology & Data Flow Matrix
+      2. Consolidated API & Protocol Contracts
+      3. Cross-Repository Dependency Tree
+      4. Target Modernization Architecture & Decoupling Strategy
+      Output ONLY structured Markdown with clear operational headers.

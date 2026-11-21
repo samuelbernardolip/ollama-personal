@@ -41,7 +41,6 @@ This architecture establishes strict credential boundaries across four AI provid
 | **GitLab Admin LIP (19.5.3)** | Antigravity / Claude / Codex / Copilot / Continue | Native Remote MCP (`mcp-remote` via OAuth/PAT) | `~/.mcp-auth/` | `gitlab-admin-lip` | Institutional admin instance (`gladminlip_` prefix) |
 | **GitLab Legacy (18.2.8)** | Antigravity / Claude / Codex / Copilot / Continue | Stdio MCP (`@zereight/mcp-gitlab`) + PAT | `~/.config/antigravity-mcp/` | `gitlab-legacy` | Self-hosted legacy instance (`gllegacy_` prefix) |
 | **GitLab Admin Legacy (16 latest)** | Antigravity / Claude / Codex / Copilot / Continue | Stdio MCP (`@zereight/mcp-gitlab`) + PAT | `~/.config/antigravity-mcp/` | `gitlab-admin-legacy` | Self-hosted legacy admin instance (`gladminleg_` prefix) |
-
 ---
 
 #### 2. Arch Linux Host Prerequisites and Package Management
@@ -1093,6 +1092,67 @@ Because `GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_PERSONAL_ACCESS_TOKEN}"` dynami
 ---
 
 ---
+
+--------------------------------------------------------------------------------
+
+### Two-Stage Local Token & Cost Optimization Architecture (Continue + Antigravity)
+
+When modernizing or migrating multi-repository codebases with dozens of configuration files and pipelines, passing raw repositories directly into frontier reasoning models wastes hundreds of thousands of metered tokens and risks context truncation.
+
+To achieve maximum cost efficiency and prevent out-of-memory (OOM) failures on developer hardware (such as laptops with 4GB VRAM or desktops with 8GB VRAM), this environment implements a **strict two-stage processing pipeline**:
+1. **Stage 1: Zero-Cost Local Pre-Processing (VS Code Continue + Ollama + CPU Reranker)**: Local hardware indexes, extracts, and pre-compresses raw files into dense Markdown architectural digests without spending a single cloud API token.
+2. **Stage 2: High-Context Frontier Orchestration (VS Code Antigravity + Google AI Pro / Model Garden)**: Antigravity's 1M+ token context window ingests the clean local digest and orchestrates specialized MCP subagents (`claude-fable-gcp`, `gemini-carbon-gcp`, `openai-codex-plus`) to generate migration plans, audit infrastructure, and generate code.
+
+#### 1. Hardware Allocation Strategy (Laptop vs. Office Desktop)
+
+| Workload Phase | Machine & Hardware | Model Roles | Responsibilities |
+| :--- | :--- | :--- | :--- |
+| **Phase 1: Local Extraction & Indexing** | Laptop (GTX 1650 4GB + 16GB RAM) | `qwen2.5-coder:3b` (GPU) + `nomic-embed-text` (CPU Container, port 11435) | Extract single-file purpose, triggers, endpoints, and dependencies into `/digest` files. |
+| **Phase 1: Full-Workspace Synthesis** | Desktop (RTX 3050 8GB + 32GB RAM) | `qwen2.5-coder:7b` (GPU) + `bge-reranker-base` (CPU Container, port 8080) | Cross-repo `@codebase` semantic search and consolidation into master specification. |
+| **Phase 2: Frontier MCP Orchestration** | Flat-Rate Cloud (Google AI Pro in Antigravity) | `gemini-3.1-pro` / `gemini-4-carbon` (1M+ context) | Dispatches tasks across MCP subagents; consumes 0 local VRAM for tool schemas. |
+
+#### 2. Local Two-Stage RAG Indexing & `.continueignore` Setup
+
+To index all project code locally without memory exhaustion or index pollution:
+1. **Parallel CPU Embedding Engine (`ollama-embed-cpu`)**: Run the dedicated CPU Ollama service on port 11435 (`NVIDIA_VISIBLE_DEVICES=none`). This allows Continue's `@codebase` indexer to embed files across all 16 Ryzen CPU threads in system RAM while your GPU coding model stays permanently loaded in VRAM on port 11434.
+2. **Embedded Vector Database (LanceDB)**: Continue stores vectors locally in `~/.continue/index/` using embedded LanceDB and SQLite metadata caches, requiring zero standalone vector database daemons.
+3. **Workspace Filtering via `.continueignore`**: Exclude static assets, build outputs, and lockfiles by placing `.continueignore` in the repository root:
+   ```text
+   node_modules/
+   dist/
+   build/
+   target/
+   .git/
+   .venv/
+   venv/
+   __pycache__/
+   *.lock
+   *.min.js
+   *.map
+   *.sqlite3
+   *.html
+   *.json
+   !package.json
+   !composer.json
+   ```
+4. **Local CPU Cross-Encoder Reranking**: Continue retrieves 12 candidate chunks via vector search, scores their exact relevance using `bge-reranker-base` on `http://localhost:8080`, and forwards only the top 3 highest-scoring snippets to the model.
+
+#### 3. Automated Workspace Summarization Workflow
+
+Using custom Continue prompts, process large repositories in two discrete steps:
+1. **File-Level Extraction (`/digest`)**: Highlight 3 to 5 entry files (e.g., `Jenkinsfile`, Dockerfiles, playbooks) and invoke `/digest` to generate a 400-word structured technical summary in `migration-prep/`.
+2. **Cross-Repository Synthesis (`/synthesize`)**: Open a fresh Continue chat, attach the generated digest files using `@file`, and execute `/synthesize` to produce `migration-prep/MASTER_ARCHITECTURE_SPEC.md` (< 12,000 words).
+
+#### 4. Frontier MCP Orchestration in Antigravity
+
+Loading 11 MCP servers injects 15,000 to 30,000+ tokens of JSON tool schemas into the system prompt. Local 3B–7B models choke on this schema overhead. By contrast, **Google Antigravity powered by Gemini Pro / Gemini 4 Carbon** features a 1M+ token context window, natively supporting all MCP servers simultaneously:
+1. **Open Antigravity Chat (`Ctrl+L`)**: Select `gemini-3.1-pro` (flat-rate Google AI Pro) or `gemini-4-carbon` (Google Cloud Agent Platform).
+2. **Attach the Synthesized Specification**: Reference `@migration-prep/MASTER_ARCHITECTURE_SPEC.md` directly.
+3. **Sequential Subagent Prompting**: Instruct Antigravity to route subtasks across the MCP mesh:
+   * *Architecture & Phased Planning*: Dispatched to `claude-fable-gcp` (`claude-fable-5-2`).
+   * *Infrastructure Risk & Dependency Audit*: Dispatched to `gemini-carbon-gcp` (`gemini-4-carbon`).
+   * *Code Generation & Test Templates*: Dispatched to `openai-codex-plus` (`ask_codex`).
+   * *Repository Synchronization*: Pushed or queried via `gitlab-com`, `gitlab-lip`, or `github-mcp`.
 
 #### 8. Arch Linux KDE Plasma 6 (Wayland) and Systemd Configuration
 

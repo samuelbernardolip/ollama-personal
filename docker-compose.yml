@@ -1,12 +1,14 @@
 # ==============================================================================
-# Unified AI Inference & RAG Stack: Ollama, Open-WebUI & Local CPU Reranker
-# Hardware Target: AMD Ryzen 7 5800H (16GB RAM) + NVIDIA GTX 1650 (4GB VRAM)
+# Unified AI Inference, Embeddings & RAG Stack: Ollama, CPU-Embed, Open-WebUI & Reranker
+# Hardware Target: AMD Ryzen 7 5800H (16GB RAM) + NVIDIA GTX 1650 Mobile (4GB VRAM)
+# Architecture: Parallel GPU Inference (Port 11434) + Parallel CPU Embeddings (Port 11435)
+#               + Open-WebUI (Port 3000) + CPU Cross-Encoder Reranker (Port 8080)
 # Compatible with Docker Compose & Podman Compose (CDI / NVIDIA Container Toolkit)
 # ==============================================================================
 
 services:
   # ----------------------------------------------------------------------------
-  # 1. Ollama Inference Engine (GPU-Accelerated)
+  # 1. Ollama Inference Engine (GPU-Accelerated - Coding, Reasoning & Chat)
   # ----------------------------------------------------------------------------
   ollama:
     image: docker.io/ollama/ollama:latest
@@ -15,11 +17,13 @@ services:
     restart: unless-stopped
     environment:
       - OLLAMA_HOST=0.0.0.0
-      - OLLAMA_NUM_PARALLEL=4
+      - OLLAMA_NUM_PARALLEL=1          # Single worker to conserve ~2.5GB KV-cache on 4GB VRAM
+      - OLLAMA_MAX_LOADED_MODELS=1     # Dedicated GPU execution; prevents embedder swapping
+      - OLLAMA_KEEP_ALIVE=24h          # Keeps main coder model hot in VRAM
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-      - OLLAMA_FLASH_ATTENTION=1
-      - OLLAMA_KV_CACHE_TYPE=q8_0
+      - OLLAMA_FLASH_ATTENTION=1       # Flash attention cuts VRAM allocation in half
+      - OLLAMA_KV_CACHE_TYPE=q8_0      # Quantized 8-bit KV cache prevents CUDA OOM at 8k-16k
     volumes:
       - /var/lib/ollama/data:/root/.ollama
     ports:
@@ -30,7 +34,30 @@ services:
       - label=disable
 
   # ----------------------------------------------------------------------------
-  # 2. Open-WebUI (Web Management Interface)
+  # 2. Ollama CPU Embedding Engine (16-Thread Ryzen 7 5800H - Zero VRAM Usage)
+  # ----------------------------------------------------------------------------
+  # Runs concurrently on system RAM, allowing background Continue codebase indexing
+  # while the GPU runs chat, diff edits, and summarization in parallel on port 11434.
+  ollama-embed-cpu:
+    image: docker.io/ollama/ollama:latest
+    container_name: ollama-embed-cpu
+    hostname: ollama-embed-cpu
+    restart: unless-stopped
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_NUM_PARALLEL=2          # Parallel embedding worker threads
+      - OLLAMA_MAX_LOADED_MODELS=1
+      - OLLAMA_NUM_THREAD=8            # Saturates physical Zen 3 cores without hyperthread thrashing
+      - NVIDIA_VISIBLE_DEVICES=none    # Forces 100% CPU execution; zero GPU memory allocation
+    volumes:
+      - /var/lib/ollama/data:/root/.ollama  # Shares model store with ollama GPU container
+    ports:
+      - "127.0.0.1:11435:11434"       # Host port 11435 -> container internal port 11434
+    security_opt:
+      - label=disable
+
+  # ----------------------------------------------------------------------------
+  # 3. Open-WebUI (Web Management Interface)
   # ----------------------------------------------------------------------------
   open-webui:
     image: ghcr.io/open-webui/open-webui:main
@@ -52,7 +79,7 @@ services:
       - label=disable
 
   # ----------------------------------------------------------------------------
-  # 3. Continue CPU Cross-Encoder Reranker (100% CPU, 0 MB VRAM)
+  # 4. Continue CPU Cross-Encoder Reranker (100% CPU, 0 MB VRAM)
   # ----------------------------------------------------------------------------
   rerank-server:
     build:
