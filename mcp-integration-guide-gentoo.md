@@ -9,18 +9,27 @@ An enterprise-grade reference architecture for orchestrating multi-provider AI a
 On Gentoo Linux, maintaining package hygiene and avoiding unmanaged host binaries is paramount. While `dev-util/claude-code` is available in the main Portage tree and `dev-util/google-antigravity-cli` and `dev-util/codex` are available in `guru`, **there is currently no official `google-cloud-cli` or `google-cloud-sdk` ebuild in the primary `::gentoo` tree or `::guru`**. Historically, `dev-util/google-cloud-sdk` was removed from Portage due to Google's self-updating component architecture (`gcloud components update`) and vendored Python dependencies clashing with Gentoo QA standards.
 
 This guide provides two robust paths for Google Cloud Application Default Credentials (ADC):
+
 1. **Containerized Architecture (Primary / Zero Host Contamination)**: Runs the official Google Cloud CLI inside a minimal, user-isolated Docker container via Docker Compose, exposing tokens directly to host user storage.
+
 2. **Native Ebuild Architecture (Alternative / Local Overlay)**: Provides a production-ready custom binary ebuild (`dev-util/google-cloud-cli-bin`) in a local Portage repository (`/var/db/repos/localrepo`) for users who prefer native host execution without Docker daemon overhead.
 
 Both architectures guarantee identical, hermetic isolation across all four providers and seven operational tiers:
 
 1. **Google AI Pro (Consumer Subscription)**: Flat-rate consumer subscription driving daily interactive development in the Google Antigravity VS Code extension and the Antigravity CLI (`agy-pro`).
+
 2. **Google Cloud Agent Platform (Enterprise ADC)**: Pay-as-you-go Vertex AI infrastructure providing on-demand execution for **Gemini 4 Carbon** and **Claude Opus 5.5**, accessed via ADC and a zero-dependency local MCP bridge.
+
 3. **Anthropic Teams (Organization OAuth)**: Standard corporate team subscription driving the official Claude Code VS Code extension and terminal workflow (`claude-teams`).
+
 4. **Claude Fable 5.2 on Google Cloud Model Garden**: Enterprise Claude execution hosted on Google infrastructure, isolated through a dedicated configuration directory (`~/.claude-gcp`) and invoked as an MCP subagent.
+
 5. **OpenAI ChatGPT Plus (€23/mo Consumer OAuth)**: Flat-rate consumer access driving the OpenAI Codex CLI and VS Code extension (`openai-codex-plus`), isolated within `~/.codex`.
+
 6. **OpenAI API (Pay-As-You-Go)**: On-demand per-token API billing used when Plus rate limits are exhausted or for automated background tasks, isolated within `~/.codex-api`.
+
 7. **GitHub Copilot (Student / Individual / Enterprise)**: GitHub's code intelligence engine operating alongside local MCP servers, paired with a native Node or containerized GitHub MCP server for workspace awareness.
+
 8. **GitLab Multi-Instance Mesh (SaaS, Enterprise & Institutional Infrastructure)**: Seamless multi-instance GitLab integration connecting agents to five distinct developer and administrative platforms: **GitLab.com** (SaaS, 19.5+), **gitlab.lip.pt** (LIP production, 19.5.3), **gitlab-admin.lip.pt** (LIP admin, 19.5.3), **gitlab.legacy.example.org** (Legacy, 18.2.8), and **gitlab-admin.legacy.example.org** (Admin legacy, 16.x latest). Modern instances communicate via native remote MCP (`mcp-remote`) with URL-isolated OAuth caching, while legacy instances communicate via local stdio `@zereight/mcp-gitlab` servers with dedicated `.env` credential files. Unique tool-name prefixes (`glcom_`, `gllip_`, `gladminlip_`, `gllegacy_`, `gladminleg_`) prevent tool namespace collisions across repositories.
 
 ### Complete Provider and Billing Matrix
@@ -54,6 +63,7 @@ Install `eselect-repository`, enable `guru`, and synchronize repository metadata
 sudo emerge -av app-eselect/eselect-repository
 sudo eselect repository enable guru
 sudo emaint sync -r guru
+
 ```
 
 ### Step 2.2: Configure Licenses and Keywords
@@ -61,7 +71,9 @@ sudo emaint sync -r guru
 Add package licenses and keywords to `/etc/portage/`:
 
 ```bash
+
 # Package licenses
+
 cat << 'EOF' | sudo tee -a /etc/portage/package.license
 dev-util/claude-code all-rights-reserved
 dev-util/google-antigravity-cli all-rights-reserved
@@ -69,6 +81,7 @@ app-editors/vscode Microsoft-vscode
 EOF
 
 # Package keywords (unmask ~amd64 for tools in testing)
+
 cat << 'EOF' | sudo tee -a /etc/portage/package.accept_keywords
 dev-util/claude-code ~amd64
 dev-util/google-antigravity-cli ~amd64
@@ -76,10 +89,12 @@ dev-util/codex ~amd64
 EOF
 
 # USE flags for VS Code and Node/Python tooling
+
 cat << 'EOF' | sudo tee -a /etc/portage/package.use
 app-editors/vscode wayland
 net-libs/nodejs npm
 EOF
+
 ```
 
 ### Step 2.3: Emerge Host Dependencies
@@ -96,29 +111,46 @@ sudo emerge -av \
   net-libs/nodejs \
   app-crypt/libsecret \
   kde-plasma/kwallet-pam
+
 ```
 
 *Note on Docker: If utilizing the containerized `gcloud` approach in Section 3A, also emerge `app-containers/docker` and `app-containers/docker-compose` and enable `docker.service`.*
 
 > ⚠️ **Important Package Clarification: Google Antigravity CLI (`agy`) vs Python Packages**
+
 > On Gentoo, the compiled command-line agent is provided by `dev-util/google-antigravity-cli::guru` (which installs `/usr/bin/agy`). Do **not** confuse this with `python-google-antigravity` or Python SDKs from PyPI/overlays, which are client libraries and do not provide the `agy` command-line interface.
+
 > 
 > *Alternative standalone installation without `guru`:*
+
 > If you do not wish to enable the `::guru` overlay for Antigravity, you can install Google's official compiled standalone binary directly into `~/.local/bin/agy`:
+
 > ```bash
+
 > mkdir -p ~/.local/bin
+
 > curl -fsSL https://antigravity.google/cli/install.sh | bash
+
 > ```
+
 > Or symlink the binary bundled automatically by the **Google Antigravity** VS Code extension:
+
 > ```bash
+
 > ln -sf ~/.antigravity/bin/agy ~/.local/bin/agy
+
 > ```
 
 Verify binary locations on your host system:
+
 - VS Code: `/usr/bin/code`
+
 - Claude Code: `/usr/bin/claude`
+
 - Antigravity CLI: `/usr/bin/agy` (or `~/.local/bin/agy`)
+
 - OpenAI Codex: `/usr/bin/codex`
+
 - GitHub CLI: `/usr/bin/gh`
 
 ---
@@ -141,6 +173,7 @@ Create the isolated compose workspace and definition:
 mkdir -p ~/.config/gcloud-compose ~/.config/gcloud
 
 cat << 'EOF' > ~/.config/gcloud-compose/docker-compose.yml
+
 services:
   gcloud:
     image: gcr.io/google.com/cloudsdktool/google-cloud-cli:slim
@@ -152,6 +185,7 @@ services:
       - ${HOME}/.config/gcloud:/config/gcloud
     working_dir: /config/gcloud
 EOF
+
 ```
 
 Ensure your Gentoo user belongs to the `docker` group and the Docker daemon is active:
@@ -159,6 +193,7 @@ Ensure your Gentoo user belongs to the `docker` group and the Docker daemon is a
 ```bash
 sudo usermod -aG docker $USER
 sudo systemctl enable --now docker.service
+
 ```
 
 #### Step 3A.2: Generate Application Default Credentials (ADC)
@@ -168,15 +203,20 @@ Run the containerized login flow with non-browser authentication:
 ```bash
 UID=$(id -u) GID=$(id -g) docker compose -f ~/.config/gcloud-compose/docker-compose.yml run --rm gcloud \
   gcloud auth application-default login --no-launch-browser --project="YOUR_GCP_PROJECT_ID"
+
 ```
 
 1. Copy the URL output by the command into your local browser.
+
 2. Sign in with your Google Cloud account holding Vertex AI permissions.
+
 3. Paste the authorization verification code back into the terminal.
+
 4. Verify the credential file exists and is owned by your user:
 
 ```bash
 ls -l ~/.config/gcloud/application_default_credentials.json
+
 ```
 
 ---
@@ -191,6 +231,7 @@ If you want to eliminate containers on Gentoo entirely, create a local Portage r
 sudo mkdir -p /var/db/repos/localrepo/{profiles,metadata,dev-util/google-cloud-cli-bin}
 
 # Define repository metadata
+
 cat << 'EOF' | sudo tee /var/db/repos/localrepo/profiles/repo_name
 localrepo
 EOF
@@ -201,18 +242,21 @@ auto-sync = false
 EOF
 
 # Register local repository in Portage
+
 cat << 'EOF' | sudo tee /etc/portage/repos.conf/localrepo.conf
 [localrepo]
 location = /var/db/repos/localrepo
 priority = 100
 auto-sync = no
 EOF
+
 ```
 
 #### Step 3B.2: Create the `dev-util/google-cloud-cli-bin` Ebuild
 
 ```bash
 cat << 'EOF' | sudo tee /var/db/repos/localrepo/dev-util/google-cloud-cli-bin/google-cloud-cli-bin-480.0.0.ebuild
+
 # Copyright 2026 Gentoo Authors
 # Distributed under the terms of the Apache License 2.0
 
@@ -245,21 +289,28 @@ src_install() {
 EOF
 
 # Generate Portage digest manifest
+
 cd /var/db/repos/localrepo/dev-util/google-cloud-cli-bin
 sudo ebuild google-cloud-cli-bin-480.0.0.ebuild manifest
+
 ```
 
 #### Step 3B.3: Emerge Native `google-cloud-cli-bin` and Authenticate
 
 ```bash
+
 # Accept keyword
+
 echo "dev-util/google-cloud-cli-bin ~amd64" | sudo tee -a /etc/portage/package.accept_keywords
 
 # Install native package
+
 sudo emerge -av dev-util/google-cloud-cli-bin::localrepo
 
 # Perform native login (launches native browser directly)
+
 gcloud auth application-default login --project="YOUR_GCP_PROJECT_ID"
+
 ```
 
 ---
@@ -269,6 +320,7 @@ gcloud auth application-default login --project="YOUR_GCP_PROJECT_ID"
 To prevent identity conflicts, each service maintains an independent configuration boundary:
 
 ```
+
 /home/$USER/
 ├── .config/
 │   ├── antigravity-mcp/             ← Dedicated .env files for legacy/PAT GitLab instances (0700)
@@ -287,6 +339,7 @@ To prevent identity conflicts, each service maintains an independent configurati
 ├── .claude-gcp/                     ← Claude Fable 5.2 Vertex AI isolated state
 ├── .codex/                          ← OpenAI ChatGPT Plus OAuth session state
 └── .codex-api/                      ← OpenAI Pay-As-You-Go API session state
+
 ```
 
 ### Step 4.1: Ensure Clean Default Antigravity Settings
@@ -297,12 +350,14 @@ Antigravity must default to your **Google AI Pro** personal subscription without
 mkdir -p ~/.gemini/config
 
 cat << 'EOF' > ~/.gemini/config/config.json
+
 {
   "userSettings": {
     "enableAdc": false
   }
 }
 EOF
+
 ```
 
 ### Step 4.2: Initial Login for Each Identity
@@ -310,47 +365,63 @@ EOF
 Authenticate each provider in its respective isolated storage directory on Gentoo:
 
 ```bash
+
 # 1. Google AI Pro OAuth login in Antigravity CLI
+
 /usr/bin/agy
 
 # 2. Anthropic Teams OAuth login in Claude Code
+
 /usr/bin/claude login
 
 # 3. OpenAI ChatGPT Plus login in ~/.codex (using /usr/bin/codex)
+
 /usr/bin/codex login
 
 # 4. OpenAI API Key login in ~/.codex-api (using /usr/bin/codex)
+
 mkdir -p ~/.codex-api
 printenv "sk-proj-YOUR_OPENAI_API_KEY" | CODEX_HOME="$HOME/.codex-api" /usr/bin/codex login
 
 # 5. GitHub Copilot CLI authorization
+
 /usr/bin/gh auth login --web -s copilot
 
 # 6. Initialize Isolated Credential Directory for Legacy GitLab Instances (PAT)
+
 mkdir -p ~/.config/antigravity-mcp ~/.mcp-auth
 chmod 700 ~/.config/antigravity-mcp ~/.mcp-auth
 
 # Configure gitlab.legacy.example.org (v18.2.8)
+
 cat << 'EOF' > ~/.config/antigravity-mcp/gitlab-legacy.env
+
 GITLAB_PERSONAL_ACCESS_TOKEN=glpat-YOUR_LEGACY_TOKEN
 GITLAB_API_URL=https://gitlab.legacy.example.org
 GITLAB_TOOL_PREFIX=gllegacy_
 GITLAB_TOOLSETS=issues,merge_requests,repositories,pipelines,wiki
+
 # Optional: Enforce strict read-only mode if write operations should be blocked:
 # GITLAB_PERMISSION_MODE=readonly
+
 EOF
 chmod 600 ~/.config/antigravity-mcp/gitlab-legacy.env
 
 # Configure gitlab-admin.legacy.example.org (v16 latest)
+
 cat << 'EOF' > ~/.config/antigravity-mcp/gitlab-admin-legacy.env
+
 GITLAB_PERSONAL_ACCESS_TOKEN=glpat-YOUR_ADMIN_LEGACY_TOKEN
 GITLAB_API_URL=https://gitlab-admin.legacy.example.org
 GITLAB_TOOL_PREFIX=gladminleg_
 GITLAB_TOOLSETS=issues,merge_requests,repositories,pipelines,wiki
+
 # Optional: Enforce strict read-only mode if write operations should be blocked:
 # GITLAB_PERMISSION_MODE=readonly
+
 EOF
 chmod 600 ~/.config/antigravity-mcp/gitlab-admin-legacy.env
+
 ```
 
 ---
@@ -360,6 +431,7 @@ chmod 600 ~/.config/antigravity-mcp/gitlab-admin-legacy.env
 Both the **Google Antigravity CLI (`agy`)** and the **OpenAI Codex CLI (`codex`)** require lightweight, zero-dependency Python bridges to operate as standard-IO Model Context Protocol (MCP) servers:
 
 * **Antigravity CLI**: Operates via the Agent Client Protocol (ACP). The `agy-mcp-bridge` wraps `agy -m ... -p ...` and automatically detects whether Gentoo is using native host `gcloud` (Section 3B) or containerized Docker Compose `gcloud` (Section 3A), validating ADC tokens before invocation.
+
 * **OpenAI Codex CLI**: The Codex CLI does not run an MCP server daemon directly; its `codex mcp` subcommand is a client configuration registry for managing external servers. Passing `/usr/bin/codex mcp-server` causes Codex to interpret `"mcp-server"` as a positional prompt instruction, execute it, and immediately terminate—closing the standard IO stream and triggering `MCP error -32000: Connection closed` in Continue, Claude, Antigravity, and Copilot. Running bare `/usr/bin/codex` launches the interactive terminal TUI. The `codex-mcp-bridge` wraps `codex exec -m <model> <prompt>` over standard-IO JSON-RPC, enabling reliable multi-agent delegation without process crashes.
 
 ### Step 5.1: Install `agy-mcp-bridge` (Auto-Detecting)
@@ -379,6 +451,7 @@ HOME = os.path.expanduser("~")
 COMPOSE_FILE = os.path.join(HOME, ".config/gcloud-compose/docker-compose.yml")
 
 # Discover native binary locations
+
 AGY_BIN = shutil.which("agy") or "/usr/bin/agy"
 GCLOUD_BIN = shutil.which("gcloud") or "/usr/bin/gcloud"
 
@@ -491,6 +564,7 @@ for line in sys.stdin:
 EOF
 
 chmod +x ~/.local/bin/agy-mcp-bridge
+
 ```
 
 ### Step 5.2: Install `codex-mcp-bridge`
@@ -509,6 +583,7 @@ import subprocess
 import sys
 
 # Locate native codex binary from dev-util/codex::guru
+
 CODEX_BIN = shutil.which("codex") or "/usr/bin/codex"
 HOME = os.path.expanduser("~")
 
@@ -598,6 +673,7 @@ for line in sys.stdin:
 EOF
 
 chmod +x ~/.local/bin/codex-mcp-bridge
+
 ```
 
 ## 6. MCP Server Configurations Across All Extensions
@@ -655,6 +731,7 @@ Configure the shared MCP endpoints so Antigravity, Claude Code, and Codex can cr
     }
   }
 }
+
 ```
 
 *Note: Replace `/home/YOUR_USERNAME` with your actual `$HOME` path and `YOUR_GCP_PROJECT_ID` with your project name. If system paths are required, `claude` and `codex` resolve to `/usr/bin/claude` and `/usr/bin/codex`.*
@@ -670,15 +747,20 @@ Generate a GitHub Personal Access Token (PAT) in your [GitHub Developer Settings
 For Copilot agents, Continue, and `@modelcontextprotocol/server-github`, a **Classic PAT (`ghp_...`)** is recommended because the MCP server uses OAuth scope filtering to automatically enable only the tools your token supports.
 
 ##### Step-by-Step GitHub PAT Creation:
+
 1. **Open token settings**: Sign in to GitHub, click your profile picture (top-right), and navigate to **Settings** → **Developer settings** (bottom of left sidebar) → **Personal access tokens** → **Tokens (classic)**.
+
 2. **Generate a new token**: Click **Generate new token** → **Generate new token (classic)**.
+
 3. **Configure expiration and note**: Add a descriptive note (e.g., `Copilot MCP Agent - Gentoo Workstation`) and choose an expiration window (e.g., 90 days or custom).
+
 4. **Select required scopes**: Check the boxes that match what you want your agent to do:
    * `repo` — Full access to private and public repositories (commits, branches, pull requests, issues). *(Use `public_repo` instead if you strictly work on public open-source repos).*
    * `read:org` — Read organization and team membership (required for enterprise teams).
    * `read:user` — Read user profile data.
    * `workflow` *(optional)* — Update or inspect GitHub Actions CI/CD workflows.
    * `project` *(optional)* — Read and manage GitHub Projects boards.
+
 5. Copy the token immediately. Click Generate token at the bottom and copy the ghp_... string right away---GitHub will not display it again.
 
 #### Complete Architecture & Configuration Guide for GitLab Multi-Instance Mesh
@@ -686,10 +768,15 @@ For Copilot agents, Continue, and `@modelcontextprotocol/server-github`, a **Cla
 Connecting multiple GitLab servers across distinct versions requires a hybrid architecture tailored to each instance's underlying MCP capabilities:
 
 ##### 1. Modern Instances (GitLab 19.5+): `gitlab.com`, `gitlab.lip.pt` & `gitlab-admin.lip.pt`
+
 * **Native Remote Endpoint**: GitLab 19.5+ includes a native `/api/v4/mcp` endpoint.
+
 * **Client Architecture (`mcp-remote`)**: The `mcp-remote` proxy acts as a local stdio client that speaks to remote HTTP MCP endpoints, implementing OAuth 2.0 Dynamic Client Registration.
+
 * **Automatic Browser Login**: On the first tool invocation, `mcp-remote` intercepts the 401 challenge, opens your default web browser to the GitLab login screen, and caches the granted session token in `~/.mcp-auth/<url-hash>/`.
+
 * **Toolset Optimization**: GitLab's MCP endpoint exposes groups of tools controlled by the `X-Gitlab-Enabled-Mcp-Server-Toolsets` HTTP header. By declaring `core,merge_requests,work_items,repository,ci,wikis,code_security`, you retain all essential developer tools while enabling opt-in `wikis` and `code_security`, and trimming `duo_agent_platform` (which is unavailable or unneeded on standard/free accounts, saving ~20k tokens from the agent context window). Note that `meta` (e.g. `get_mcp_server_version`) is always included automatically.
+
 * **Tool-Name Prefixes**: Declaring `X-Gitlab-Mcp-Server-Tool-Name-Prefix:<prefix>_` prefixes every tool exposed by that server:
   * `gitlab.com` -> `glcom_` (e.g. `glcom_list_projects`, `glcom_get_file_contents`)
   * `gitlab.lip.pt` -> `gllip_` (e.g. `gllip_list_projects`, `gllip_create_merge_request`)
@@ -697,8 +784,11 @@ Connecting multiple GitLab servers across distinct versions requires a hybrid ar
   This completely prevents tool namespace collisions when multiple GitLab instances are loaded into the same agent session.
 
 ##### 2. Legacy Instances (GitLab < 19.5): `gitlab.legacy.example.org` (18.2.8) & `gitlab-admin.legacy.example.org` (16.x latest)
+
 * **API Compatibility**: GitLab 18.2.8 and 16.x predate the native `/api/v4/mcp` endpoint.
+
 * **Client Architecture (`@zereight/mcp-gitlab`)**: Connects to the standard GitLab REST/GraphQL API via the `@zereight/mcp-gitlab` stdio MCP server.
+
 * **Zero Secret Leakage via POSIX Subshells**: Sourcing the `.env` file via `sh -c 'set -a && . "$HOME/.config/antigravity-mcp/<name>.env" && set +a && exec npx -y @zereight/mcp-gitlab'` guarantees that:
   1. Secrets (`GITLAB_PERSONAL_ACCESS_TOKEN`) are confined strictly to that child process and never leak into global environment tables.
   2. The `exec` call replaces the shell with the Node runtime, ensuring clean termination when sessions close.
@@ -706,17 +796,22 @@ Connecting multiple GitLab servers across distinct versions requires a hybrid ar
   4. Setting `GITLAB_TOOLSETS=issues,merge_requests,repositories,pipelines,wiki` loads the exact essential tools while saving ~50k tokens compared to `GITLAB_TOOLSETS=all`.
 
 ##### 3. How to Create Personal Access Tokens (PAT) for Legacy Instances
+
 1. Sign in to your self-hosted GitLab instance (`https://gitlab.legacy.example.org` or `https://gitlab-admin.legacy.example.org`).
+
 2. Go to **User Settings** (or click your profile avatar) -> **Access Tokens**.
+
 3. Click **Add new token**, provide a descriptive name (e.g. `VSCode-Agent-MCP`), and set an expiration window.
+
 4. Select the necessary scopes:
    * `api` — Full read/write access to repository, issues, merge requests, and pipelines.
    * `read_api` — Read-only access to projects and issues. (If selected, also add `GITLAB_PERMISSION_MODE=readonly` to the `.env` file).
+
 5. Click **Create personal access token** and copy the `glpat-...` string immediately into your `.env` file (`~/.config/antigravity-mcp/gitlab-legacy.env` or `gitlab-admin-legacy.env`).
 
 ##### 4. Institutional SSL / Custom CA Certificates
-If internal academic instances (e.g., `lip.pt`, `example.org`) use private or enterprise root certificates, Node.js can be configured to trust your host certificates by adding `NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt` to the `.env` files or exporting it in your environment.
 
+If internal academic instances (e.g., `lip.pt`, `example.org`) use private or enterprise root certificates, Node.js can be configured to trust your host certificates by adding `NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt` to the `.env` files or exporting it in your environment.
 
 #### Configuration Path Resolution and Compatibility Symlink
 
@@ -725,6 +820,7 @@ Depending on the release channel of the Google Antigravity VS Code extension (`G
 ```bash
 mkdir -p ~/.gemini/antigravity
 ln -sf ~/.gemini/config/mcp_config.json ~/.gemini/antigravity/mcp_config.json
+
 ```
 
 ### Step 6.2: Claude Code Global Configuration (`~/.claude.json`)
@@ -732,13 +828,16 @@ ln -sf ~/.gemini/config/mcp_config.json ~/.gemini/antigravity/mcp_config.json
 Register the MCP endpoints into Claude Code:
 
 ```bash
+
 # Register Google Cloud Gemini 4 Carbon
+
 claude mcp add --scope user gemini-carbon-gcp \
   -e GOOGLE_CLOUD_PROJECT="YOUR_GCP_PROJECT_ID" \
   -e GOOGLE_CLOUD_LOCATION="global" \
   -- "$HOME/.local/bin/agy-mcp-bridge"
 
 # Register Google Cloud Model Garden Claude Fable 5.2
+
 claude mcp add --scope user claude-fable-gcp \
   -e CLAUDE_CONFIG_DIR="$HOME/.claude-gcp" \
   -e CLAUDE_CODE_USE_VERTEX=1 \
@@ -748,45 +847,54 @@ claude mcp add --scope user claude-fable-gcp \
   -- /usr/bin/claude mcp serve
 
 # Register OpenAI Codex (ChatGPT Plus) via codex-mcp-bridge
+
 claude mcp add --scope user openai-codex-plus \
   -e CODEX_HOME="$HOME/.codex" \
   -- "$HOME/.local/bin/codex-mcp-bridge"
 
 # Register OpenAI Codex (API Key) via codex-mcp-bridge
+
 claude mcp add --scope user openai-codex-api \
   -e CODEX_HOME="$HOME/.codex-api" \
   -- "$HOME/.local/bin/codex-mcp-bridge"
 
 # Register Native GitHub MCP Server via npx (inheriting GITHUB_PERSONAL_ACCESS_TOKEN from environment)
+
 claude mcp add --scope user github-mcp \
   -e GITHUB_PERSONAL_ACCESS_TOKEN="${GITHUB_PERSONAL_ACCESS_TOKEN}" \
   -- npx -y @modelcontextprotocol/server-github
 
 # Register GitLab.com (SaaS, 19.5+) via mcp-remote
+
 claude mcp add --scope user gitlab-com \
   -- npx -y mcp-remote https://gitlab.com \
   --header X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security \
   --header X-Gitlab-Mcp-Server-Tool-Name-Prefix:glcom_
 
 # Register GitLab LIP (19.5.3) via mcp-remote
+
 claude mcp add --scope user gitlab-lip \
   -- npx -y mcp-remote https://gitlab.lip.pt \
   --header X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security \
   --header X-Gitlab-Mcp-Server-Tool-Name-Prefix:gllip_
 
 # Register GitLab Admin LIP (19.5.3) via mcp-remote
+
 claude mcp add --scope user gitlab-admin-lip \
   -- npx -y mcp-remote https://gitlab-admin.lip.pt \
   --header X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security \
   --header X-Gitlab-Mcp-Server-Tool-Name-Prefix:gladminlip_
 
 # Register GitLab Legacy (18.2.8) via @zereight/mcp-gitlab + .env
+
 claude mcp add --scope user gitlab-legacy \
   -- sh -c 'set -a && . "$HOME/.config/antigravity-mcp/gitlab-legacy.env" && set +a && exec npx -y @zereight/mcp-gitlab'
 
 # Register GitLab Admin Legacy (16 latest) via @zereight/mcp-gitlab + .env
+
 claude mcp add --scope user gitlab-admin-legacy \
   -- sh -c 'set -a && . "$HOME/.config/antigravity-mcp/gitlab-admin-legacy.env" && set +a && exec npx -y @zereight/mcp-gitlab'
+
 ```
 
 ### Step 6.3: OpenAI Codex Global Configuration (`~/.codex/config.toml` & `~/.codex-api/config.toml`)
@@ -869,6 +977,7 @@ args = [
   "-c",
   "set -a && . "$HOME/.config/antigravity-mcp/gitlab-admin-legacy.env" && set +a && exec npx -y @zereight/mcp-gitlab"
 ]
+
 ```
 
 Sync configuration to the API directory:
@@ -876,6 +985,7 @@ Sync configuration to the API directory:
 ```bash
 mkdir -p ~/.codex-api
 cp ~/.codex/config.toml ~/.codex-api/config.toml
+
 ```
 
 ---
@@ -972,6 +1082,7 @@ GitHub Copilot operates in VS Code via official marketplace extensions. Configur
     }
   }
 }
+
 ```
 
 This configuration enables prompting Copilot Chat to delegate complex architecture or verification tasks to your Google Cloud or Anthropic subagents:
@@ -1089,6 +1200,7 @@ mcpServers:
     args:
       - -c
       - set -a && . "$HOME/.config/antigravity-mcp/gitlab-admin-legacy.env" && set +a && exec npx -y @zereight/mcp-gitlab
+
 ```
 
 Because `GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_PERSONAL_ACCESS_TOKEN}"` dynamically pulls from your exported environment, your `config.yaml` remains completely free of credentials and can be safely committed to git repositories or shared across machines.
@@ -1107,6 +1219,7 @@ Ensure Electron launches natively on Wayland with KWallet 6 integration:
 --ozone-platform-hint=auto
 --enable-wayland-ime
 --password-store=kwallet6
+
 ```
 
 ### Step 8.2: Environment Hygiene Check
@@ -1114,9 +1227,12 @@ Ensure Electron launches natively on Wayland with KWallet 6 integration:
 Do **not** export global AI environment variables in `~/.config/environment.d/` or `/etc/environment`. Clean up any legacy variables to avoid credential leakage:
 
 ```bash
+
 # Clean out legacy environment files if previously configured
+
 rm -f ~/.config/environment.d/*ai*.conf
 systemctl --user daemon-reload
+
 ```
 
 ---
@@ -1126,14 +1242,17 @@ systemctl --user daemon-reload
 Add this suite to `~/.bashrc` (or `~/.zshrc`). It auto-detects native `gcloud` vs containerized `gcloud` seamlessly:
 
 ```bash
+
 # ==============================================================================
 # Multi-Agent Development Suite: Gentoo Linux (Universal Edition)
+
 # ==============================================================================
 
 export GCP_AGENT_PROJECT="YOUR_GCP_PROJECT_ID"
 export GCP_AGENT_REGION="global"
 
 # 1. Universal Google Cloud ADC Check & Refresh
+
 gcp-auth-refresh() {
   local project_id="${GCP_AGENT_PROJECT:-YOUR_GCP_PROJECT_ID}"
   local compose_file="$HOME/.config/gcloud-compose/docker-compose.yml"
@@ -1166,7 +1285,9 @@ gcp-auth-refresh() {
 }
 
 # 2. Antigravity CLI via Google AI Pro Subscription (Consumer OAuth)
+
 # Flags: -f (Flash), -p (Pro), -s (Claude Sonnet), -o (Claude Opus)
+
 agy-pro() {
   local args=()
   while [[ $# -gt 0 ]]; do
@@ -1183,7 +1304,9 @@ agy-pro() {
 }
 
 # 3. Antigravity CLI via Google Cloud Agent Platform (Gemini 4 Carbon / ADC)
+
 # Flags: -g (Gemini 4 Carbon), -o (Claude Opus 5.5), -s (Claude Sonnet 5.5)
+
 agy-gcp() {
   local model="gemini-4-carbon"
   while [[ $# -gt 0 ]]; do
@@ -1206,7 +1329,9 @@ agy-gcp() {
 alias agy-carbon='agy-gcp -g'
 
 # 4. Claude Code CLI via Google Cloud Model Garden (Fable 5.2 / ADC)
+
 # Flags: -f (Fable 5.2), -o (Opus 5.5), -s (Sonnet 5.5)
+
 claude-gcp() {
   local model="claude-fable-5-2"
   while [[ $# -gt 0 ]]; do
@@ -1231,7 +1356,9 @@ claude-gcp() {
 alias claude-fable='claude-gcp -f'
 
 # 5. Claude Code CLI via Anthropic Teams (Standard OAuth)
+
 # Flags: -o (Opus), -s (Sonnet), -h (Haiku)
+
 claude-teams() {
   local model_args=()
   while [[ $# -gt 0 ]]; do
@@ -1246,6 +1373,7 @@ claude-teams() {
 }
 
 # 6. Shared Flag Parser for OpenAI Codex CLI
+
 _codex_run() {
   local codex_home="$1"; shift
   local args=()
@@ -1264,14 +1392,17 @@ _codex_run() {
 }
 
 # 7. OpenAI Codex CLI Profiles
+
 codex-plus() { _codex_run "$HOME/.codex" "$@"; }
 codex-api()  { _codex_run "$HOME/.codex-api" "$@"; }
+
 ```
 
 Reload shell configuration:
 
 ```bash
 source ~/.bashrc
+
 ```
 
 ---
@@ -1285,6 +1416,7 @@ Send initialization and tool listing requests:
 ```bash
 printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n{"jsonrpc":"2.0","id":2,"method":"tools/list"}\n' \
   | ~/.local/bin/agy-mcp-bridge
+
 ```
 
 Confirm that the bridge outputs valid JSON-RPC responses containing `"protocolVersion": "2024-11-05"` and the `ask_gemini_carbon` tool schema.
@@ -1295,6 +1427,7 @@ Run the server health check:
 
 ```bash
 claude mcp list
+
 ```
 
 Verify that all 11 configured servers (`gemini-carbon-gcp`, `claude-fable-gcp`, `openai-codex-plus`, `openai-codex-api`, `github-mcp`, `gitlab-com`, `gitlab-lip`, `gitlab-admin-lip`, `gitlab-legacy`, `gitlab-admin-legacy`) display `Connected`.
@@ -1302,9 +1435,11 @@ Verify that all 11 configured servers (`gemini-carbon-gcp`, `claude-fable-gcp`, 
 ### Step 10.3: Inspect Live Indicators and Utilize MCP Servers in VS Code Antigravity
 
 #### Understanding the Antigravity UI Model
+
 In the Google Antigravity VS Code extension, MCP servers do **not** appear as separate explorer sidebars, file trees, or dedicated window panes. Instead, they are embedded directly into the Antigravity agent execution harness as background callable tools.
 
 #### Viewing and Inspecting MCP Servers in the UI
+
 1. **The `/mcp` Slash Command**:
    * Open the Antigravity chat panel by clicking the Antigravity icon in the Activity Bar or pressing **`Ctrl+L`**.
    * In the chat prompt input, type **`/mcp`** and press **Enter**.
@@ -1312,10 +1447,12 @@ In the Google Antigravity VS Code extension, MCP servers do **not** appear as se
      * **Green Ring**: Server is healthy, connected, and tool schemas are successfully registered.
      * **Amber Ring**: Server process is initializing or undergoing protocol handshake.
      * **Red Ring**: Server process terminated, binary not found, or JSON-RPC handshake failed. Clicking the server reveals stdout/stderr logs.
+
 2. **The Panel Header Tools / MCP Icon**:
    * In the top-right header of the Antigravity chat panel, click the **Tools / Plug icon** to open the registered tools modal and inspect active capabilities.
 
 #### How to Use MCP Servers in Chat Conversations
+
 * **Explicit Subagent Delegation**:
   Prompt the agent directly to route requests through specific subagent tools:
   * *"Ask `gemini-carbon-gcp` to audit this system architecture using model `gemini-4-carbon`."*
@@ -1330,22 +1467,31 @@ In the Google Antigravity VS Code extension, MCP servers do **not** appear as se
   When prompted with complex workflows (e.g. cross-repository analysis or deep static audits), the active Antigravity model autonomously selects and executes the appropriate MCP tool, surfacing an approval or execution card in the conversation stream.
 
 #### Troubleshooting: If `/mcp` is Empty or Servers Fail to Connect
+
 1. **Path Symlink**: Ensure both configuration paths point to your active configuration:
+
    ```bash
    mkdir -p ~/.gemini/antigravity
    ln -sf ~/.gemini/config/mcp_config.json ~/.gemini/antigravity/mcp_config.json
    ```
+
 2. **Absolute Binary Paths**: Desktop launcher environments (KDE Plasma Wayland / systemd) do not inherit shell profile additions to `$PATH`. Ensure all `command` entries in `mcp_config.json` use full absolute paths (`/home/YOUR_USERNAME/.local/bin/agy-mcp-bridge`, `/home/YOUR_USERNAME/.local/bin/codex-mcp-bridge`, `/usr/bin/claude`, `/usr/bin/npx`).
+
 3. **Execution Permissions**: Verify bridge scripts are executable:
+
    ```bash
    chmod +x ~/.local/bin/agy-mcp-bridge ~/.local/bin/codex-mcp-bridge
    ```
+
 4. **Reload Window**: After modifying `mcp_config.json`, reload VS Code to re-initialize the MCP client:
    * Press **`Ctrl+Shift+P`** → run **`Developer: Reload Window`**.
 
 ### Step 10.4: Verify Secondary Extension Status (Claude Code, Continue & Copilot)
+
 1. **Claude Code**: Open Claude Code sidebar (**`Ctrl+Shift+P`** → `Claude Code: Open in Side Bar`) and execute `/mcp` in the prompt box. All five servers should report `Connected`.
+
 2. **Continue Extension**: Open the Continue sidebar (**`Ctrl+L`**). The configured MCP tools will display active status in the prompt tool picker.
+
 3. **GitHub Copilot Chat**: Open Copilot Chat (**`Ctrl+Alt+I`**) and verify tool availability.
 
 ---
@@ -1355,12 +1501,17 @@ In the Google Antigravity VS Code extension, MCP servers do **not** appear as se
 When your €23/month ChatGPT Plus billing cycle concludes:
 
 1. **Remove Plus from Antigravity**: Delete the `"openai-codex-plus"` block from `~/.gemini/config/mcp_config.json`.
+
 2. **Remove Plus from Claude Code**:
+
    ```bash
    claude mcp remove --scope user openai-codex-plus
    ```
+
 3. **Clean Configuration Files**:
+
    ```bash
    rm -rf ~/.codex
    ```
+
 4. **Retain On-Demand API**: Keep `"openai-codex-api"` active across all configs. It incurs zero cost when idle and meters tokens only when an agent is explicitly instructed to execute an OpenAI call.
