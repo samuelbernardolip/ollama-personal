@@ -1,4 +1,4 @@
-# Complete MCP Integration Guide for VS Code on Gentoo Linux: Antigravity, Claude Code, OpenAI Codex, GitHub Copilot, and Continue (Enterprise Edition)
+# Complete MCP Integration Guide for VS Code on Gentoo Linux: Antigravity, Claude Code, OpenAI Codex, GitHub Copilot, and Continue (Enterprise Edition v5)
 
 An enterprise-grade reference architecture for orchestrating multi-provider AI agents, Model Context Protocol (MCP) servers, and isolated developer identities under Gentoo Linux (rolling release, systemd profile, KDE Plasma 6 on Wayland) addressing both **Containerized** and **Native Ebuild** Google Cloud CLI environments.
 
@@ -319,11 +319,14 @@ printenv "sk-proj-YOUR_OPENAI_API_KEY" | CODEX_HOME="$HOME/.codex-api" /usr/bin/
 
 ---
 
-## 5. The Universal Python MCP Bridge (`agy-mcp-bridge`)
+## 5. Universal Python MCP Bridges: Antigravity and OpenAI Codex
 
-Because the Antigravity CLI communicates via the Agent Client Protocol (ACP) rather than standard-IO MCP server mode, this self-contained Python 3 bridge exposes `ask_gemini_carbon` as a standard MCP tool. It **auto-detects** whether your Gentoo host is using native `gcloud` (Section 3B) or containerized Docker Compose `gcloud` (Section 3A), validating ADC tokens transparently before execution.
+Both the **Google Antigravity CLI (`agy`)** and the **OpenAI Codex CLI (`codex`)** require lightweight, zero-dependency Python bridges to operate as standard-IO Model Context Protocol (MCP) servers:
 
-### Step 5.1: Install `agy-mcp-bridge`
+* **Antigravity CLI**: Operates via the Agent Client Protocol (ACP). The `agy-mcp-bridge` wraps `agy -m ... -p ...` and automatically detects whether Gentoo is using native host `gcloud` (Section 3B) or containerized Docker Compose `gcloud` (Section 3A), validating ADC tokens before invocation.
+* **OpenAI Codex CLI**: The Codex CLI does not run an MCP server daemon directly; its `codex mcp` subcommand is a client configuration registry for managing external servers. Passing `/usr/bin/codex mcp-server` causes Codex to interpret `"mcp-server"` as a positional prompt instruction, execute it, and immediately terminate—closing the standard IO stream and triggering `MCP error -32000: Connection closed` in Continue, Claude, Antigravity, and Copilot. Running bare `/usr/bin/codex` launches the interactive terminal TUI. The `codex-mcp-bridge` wraps `codex exec -m <model> <prompt>` over standard-IO JSON-RPC, enabling reliable multi-agent delegation without process crashes.
+
+### Step 5.1: Install `agy-mcp-bridge` (Auto-Detecting)
 
 ```bash
 mkdir -p ~/.local/bin
@@ -338,29 +341,26 @@ import sys
 
 HOME = os.path.expanduser("~")
 COMPOSE_FILE = os.path.join(HOME, ".config/gcloud-compose/docker-compose.yml")
-ADC_FILE = os.path.join(HOME, ".config/gcloud/application_default_credentials.json")
 
+# Discover native binary locations
 AGY_BIN = shutil.which("agy") or "/usr/bin/agy"
-NATIVE_GCLOUD = shutil.which("gcloud") or "/usr/bin/gcloud"
+GCLOUD_BIN = shutil.which("gcloud") or "/usr/bin/gcloud"
 
 def send(msg):
     sys.stdout.write(json.dumps(msg) + "\n")
     sys.stdout.flush()
 
 def check_adc():
-    """Verify ADC token validity via Native gcloud or Containerized Fallback."""
-    if not os.path.exists(ADC_FILE):
-        return False
-    
-    # Priority 1: Check via native gcloud binary if installed
-    if os.path.exists(NATIVE_GCLOUD) and os.access(NATIVE_GCLOUD, os.X_OK):
+    """Auto-detect native gcloud ebuild vs containerized Docker Compose."""
+    # Method 1: Check native gcloud binary
+    if os.path.exists(GCLOUD_BIN) or shutil.which("gcloud"):
         res = subprocess.run(
-            [NATIVE_GCLOUD, "auth", "application-default", "print-access-token"],
+            [GCLOUD_BIN, "auth", "application-default", "print-access-token"],
             capture_output=True, text=True
         )
         return res.returncode == 0
-    
-    # Priority 2: Check via Docker Compose container
+
+    # Method 2: Check Docker Compose container
     if os.path.exists(COMPOSE_FILE):
         env = os.environ.copy()
         env["UID"] = str(os.getuid())
@@ -383,7 +383,7 @@ for line in sys.stdin:
     except json.JSONDecodeError:
         continue
 
-    # Suppress notifications lacking request IDs
+    # Ignore protocol notifications lacking request IDs
     if "id" not in req:
         continue
 
@@ -457,7 +457,112 @@ EOF
 chmod +x ~/.local/bin/agy-mcp-bridge
 ```
 
----
+### Step 5.2: Install `codex-mcp-bridge`
+
+Deploy the dedicated bridge that executes non-interactive `codex exec` calls over JSON-RPC stdio:
+
+```bash
+mkdir -p ~/.local/bin
+
+cat << 'EOF' > ~/.local/bin/codex-mcp-bridge
+#!/usr/bin/env python3
+import json
+import os
+import shutil
+import subprocess
+import sys
+
+# Locate native codex binary from dev-util/codex::guru
+CODEX_BIN = shutil.which("codex") or "/usr/bin/codex"
+HOME = os.path.expanduser("~")
+
+def send(msg):
+    sys.stdout.write(json.dumps(msg) + "\n")
+    sys.stdout.flush()
+
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        req = json.loads(line)
+    except json.JSONDecodeError:
+        continue
+
+    # Ignore notifications lacking an ID (e.g. notifications/initialized)
+    if "id" not in req:
+        continue
+
+    req_id = req.get("id")
+    method = req.get("method")
+
+    if method == "initialize":
+        send({
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "result": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {"tools": {}},
+                "serverInfo": {"name": "codex-mcp-bridge", "version": "1.0.0"}
+            }
+        })
+    elif method == "tools/list":
+        send({
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "result": {
+                "tools": [{
+                    "name": "ask_codex",
+                    "description": "Execute an instruction or code query non-interactively using OpenAI Codex CLI.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "prompt": {
+                                "type": "string",
+                                "description": "The coding task, prompt, or question for Codex"
+                            },
+                            "model": {
+                                "type": "string",
+                                "default": "gpt-5.3-codex",
+                                "description": "Target OpenAI model (e.g. gpt-5.3-codex, gpt-6.1, gpt-5.3-codex-mini)"
+                            }
+                        },
+                        "required": ["prompt"]
+                    }
+                }]
+            }
+        })
+    elif method == "tools/call":
+        args = req.get("params", {}).get("arguments", {})
+        prompt = args.get("prompt", "")
+        model = args.get("model", "gpt-5.3-codex")
+
+        env = os.environ.copy()
+        # Default to ~/.codex if not explicitly injected
+        if "CODEX_HOME" not in env:
+            env["CODEX_HOME"] = os.path.join(HOME, ".codex")
+
+        # Run Codex non-interactively using 'codex exec'
+        proc = subprocess.run(
+            [CODEX_BIN, "exec", "-m", model, prompt],
+            env=env,
+            capture_output=True,
+            text=True
+        )
+
+        output = proc.stdout if proc.returncode == 0 else f"Codex Error ({proc.returncode}): {proc.stderr}"
+        send({
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "result": {
+                "content": [{"type": "text", "text": output}],
+                "isError": proc.returncode != 0
+            }
+        })
+EOF
+
+chmod +x ~/.local/bin/codex-mcp-bridge
+```
 
 ## 6. MCP Server Configurations Across All Extensions
 
@@ -494,15 +599,13 @@ Configure the shared MCP endpoints so Antigravity, Claude Code, and Codex can cr
       }
     },
     "openai-codex-plus": {
-      "command": "/usr/bin/codex",
-      "args": ["mcp-server"],
+      "command": "/home/YOUR_USERNAME/.local/bin/codex-mcp-bridge",
       "env": {
         "CODEX_HOME": "/home/YOUR_USERNAME/.codex"
       }
     },
     "openai-codex-api": {
-      "command": "/usr/bin/codex",
-      "args": ["mcp-server"],
+      "command": "/home/YOUR_USERNAME/.local/bin/codex-mcp-bridge",
       "env": {
         "CODEX_HOME": "/home/YOUR_USERNAME/.codex-api"
       }
@@ -562,15 +665,15 @@ claude mcp add --scope user claude-fable-gcp \
   -e ANTHROPIC_MODEL="claude-fable-5-2" \
   -- /usr/bin/claude mcp serve
 
-# Register OpenAI Codex (ChatGPT Plus)
+# Register OpenAI Codex (ChatGPT Plus) via codex-mcp-bridge
 claude mcp add --scope user openai-codex-plus \
   -e CODEX_HOME="$HOME/.codex" \
-  -- /usr/bin/codex mcp-server
+  -- "$HOME/.local/bin/codex-mcp-bridge"
 
-# Register OpenAI Codex (API Key)
+# Register OpenAI Codex (API Key) via codex-mcp-bridge
 claude mcp add --scope user openai-codex-api \
   -e CODEX_HOME="$HOME/.codex-api" \
-  -- /usr/bin/codex mcp-server
+  -- "$HOME/.local/bin/codex-mcp-bridge"
 
 # Register Native GitHub MCP Server via npx (inheriting GITHUB_PERSONAL_ACCESS_TOKEN from environment)
 claude mcp add --scope user github-mcp \
@@ -654,8 +757,7 @@ GitHub Copilot operates in VS Code via official marketplace extensions. Configur
       }
     },
     "openai-codex": {
-      "command": "/usr/bin/codex",
-      "args": ["mcp-server"],
+      "command": "/home/YOUR_USERNAME/.local/bin/codex-mcp-bridge",
       "env": {
         "CODEX_HOME": "/home/YOUR_USERNAME/.codex"
       }
@@ -709,17 +811,15 @@ mcpServers:
 
   # 4. OpenAI Codex CLI via ChatGPT Plus Subscription (€23/mo OAuth)
   - name: openai-codex-plus
-    command: /usr/bin/codex
-    args:
-      - mcp-server
+    command: /home/YOUR_USERNAME/.local/bin/codex-mcp-bridge
+    args: []
     env:
       CODEX_HOME: "/home/YOUR_USERNAME/.codex"
 
   # 5. OpenAI Codex CLI via On-Demand API Key (Pay-As-You-Go)
   - name: openai-codex-api
-    command: /usr/bin/codex
-    args:
-      - mcp-server
+    command: /home/YOUR_USERNAME/.local/bin/codex-mcp-bridge
+    args: []
     env:
       CODEX_HOME: "/home/YOUR_USERNAME/.codex-api"
 

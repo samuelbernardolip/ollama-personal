@@ -306,17 +306,15 @@ mcpServers:
 
   # 4. OpenAI Codex CLI via ChatGPT Plus Subscription (€23/mo OAuth)
   - name: openai-codex-plus
-    command: codex
-    args:
-      - mcp-server
+    command: /home/YOUR_USERNAME/.local/bin/codex-mcp-bridge
+    args: []
     env:
       CODEX_HOME: "/home/YOUR_USERNAME/.codex"
 
   # 5. OpenAI Codex CLI via On-Demand API Key (Pay-As-You-Go)
   - name: openai-codex-api
-    command: codex
-    args:
-      - mcp-server
+    command: /home/YOUR_USERNAME/.local/bin/codex-mcp-bridge
+    args: []
     env:
       CODEX_HOME: "/home/YOUR_USERNAME/.codex-api"
 
