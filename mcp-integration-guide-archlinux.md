@@ -762,10 +762,7 @@ _codex_run() {
       -g|--gpt)    args+=(-m "gpt-6.1"); shift ;;
       --mini)      args+=(-m "gpt-5.3-codex-mini"); shift ;;
       -H|--high)   args+=(-c 'model_reasoning_effort="high"'); shift ;;
-      -X|--xhigh)  arg
-```
-```bash
-s+=(-c 'model_reasoning_effort="xhigh"'); shift ;;
+      -X|--xhigh)  args+=(-c 'model_reasoning_effort="xhigh"'); shift ;;
       -m|--model)  args+=(-m "$2"); shift 2 ;;
       *)           break ;;
     esac
