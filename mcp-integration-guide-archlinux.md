@@ -36,11 +36,12 @@ This architecture establishes strict credential boundaries across four AI provid
 
 Arch Linux relies on `pacman` for official core packages and the Arch User Repository (AUR) for third-party developer tools and AI agents. By utilizing AUR packages, the entire stack runs natively on the bare metal, removing container layers, volume permission mapping, and virtualization latency.
 
-### Step 2.1: Install Core System Dependencies via `pacman`
+### Step 2.1: Install Core System Dependencies and OpenAI Codex via `pacman`
 
-Install the required desktop, secret service, Node.js runtime, and shell utilities:
+Arch Linux provides the official **OpenAI Codex CLI** package directly in the **`[extra]`** repository as **`openai-codex`**, which installs the native `/usr/bin/codex` executable directly into your system PATH. Install it alongside standard build tools, desktop secret storage, and Node.js runtimes:
 
 ```bash
+# Install core tools and openai-codex from official [extra] repository
 sudo pacman -Syu --needed \
   base-devel \
   git \
@@ -52,14 +53,25 @@ sudo pacman -Syu --needed \
   libsecret \
   kwallet \
   kwallet-pam \
-  xdg-utils
+  xdg-utils \
+  openai-codex
+```
+
+Verify that `codex` is immediately available from `/usr/bin/`:
+
+```bash
+which codex
+# Output: /usr/bin/codex
+
+pacman -Q openai-codex
+# Output: openai-codex <version>
 ```
 
 *Note: Ensure `kwallet-pam` is active in your PAM configuration (`/etc/pam.d/sddm` or `/etc/pam.d/login`) so your KWallet 6 keyring unlocks automatically at graphical login.*
 
-### Step 2.2: Install VS Code and Native AI Agents via AUR
+### Step 2.2: Install VS Code and Native AI Agents via AUR (`yay` / `paru`)
 
-Using an AUR helper like `yay` or `paru`, install the official VS Code binary, the native Google Cloud CLI, and the AI command-line interfaces:
+Using an AUR helper like `yay` or `paru`, install the official VS Code binary, the native Google Cloud CLI, Claude Code, and the official Google Antigravity CLI package (`aur/antigravity-cli`):
 
 ```bash
 # 1. Install official VS Code binary (recommended over Code - OSS for extension marketplace compatibility)
@@ -70,36 +82,56 @@ yay -S --needed google-cloud-cli
 
 # 3. Install AI CLI packages from the AUR
 yay -S --needed \
-  claude-code-bin \
-  google-antigravity-bin \
-  codex-cli
+  claude-code \
+  antigravity-cli
 ```
 
-*Alternative for `google-cloud-cli`: If you prefer precompiled tarballs rather than building package metadata, `yay -S --needed google-cloud-cli-bin` can be used.*
+*Notes on package selection:*
+* **`aur/antigravity-cli`**: Installs the genuine Google Antigravity command-line binary (`/usr/bin/agy`). Do **not** install `aur/python-google-antigravity`, which is an unrelated Python client SDK and does not provide the `agy` command-line executable.
+* **`google-cloud-cli`**: If you prefer precompiled binary archives rather than building from source, `yay -S --needed google-cloud-cli-bin` can be used.
 
-#### Optional: Standalone User-Space Fallback (No AUR Dependency)
-If any AUR package is undergoing upstream maintenance, binaries can be installed directly into `~/.local/bin`:
+### Step 2.3: Alternative Installation Methods for Google Antigravity CLI (`agy`)
+
+If `aur/antigravity-cli` is ever undergoing upstream maintenance, you can obtain the exact same binary through either of these direct fallbacks:
+
+#### Method A: Official Standalone Installer
+Install Google's official static binary directly into user space (`~/.local/bin/agy`):
 
 ```bash
 mkdir -p ~/.local/bin
-
-# Google Antigravity CLI official installer
 curl -fsSL https://antigravity.google/cli/install.sh | bash
-
-# Anthropic Claude Code CLI via user-space Node
-npm install -g @anthropic-ai/claude-code --prefix ~/.local
-
-# OpenAI Codex CLI via user-space Node
-npm install -g @openai/codex --prefix ~/.local
 ```
 
-Ensure `~/.local/bin` is in your shell search path:
-
+Ensure `~/.local/bin` is in your shell `PATH` in `~/.bashrc`:
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-Verify binary paths using `which code gcloud claude agy codex gh`. All binaries should resolve to native host paths in `/usr/bin/` or `~/.local/bin/`.
+#### Method B: Symlink from the VS Code Extension
+If you already use the official **Google Antigravity** extension in VS Code (`Google.google-antigravity`), it automatically bundles the compiled `agy` service engine under `~/.antigravity/bin/agy` (or `~/.gemini/antigravity/bin/agy`). You can symlink it into your path:
+
+```bash
+mkdir -p ~/.local/bin
+ln -sf ~/.antigravity/bin/agy ~/.local/bin/agy
+```
+
+#### Optional: Standalone User-Space Fallbacks
+If any package is undergoing upstream maintenance:
+```bash
+# Anthropic Claude Code CLI via user-space Node runtime
+npm install -g @anthropic-ai/claude-code --prefix ~/.local
+
+# OpenAI Codex CLI via user-space Node runtime (fallback if extra/openai-codex is unavailable)
+npm install -g @openai/codex --prefix ~/.local
+```
+
+Verify binary paths using `which code gcloud claude agy codex gh`. All tools resolve cleanly to native system paths:
+* **VS Code**: `/usr/bin/code` (via AUR `visual-studio-code-bin`)
+* **Google Cloud CLI**: `/usr/bin/gcloud` (via AUR `google-cloud-cli`)
+* **Claude Code**: `/usr/bin/claude` (via AUR `claude-code`)
+* **Antigravity CLI**: `/usr/bin/agy` (via AUR `antigravity-cli` or `~/.local/bin/agy`)
+* **OpenAI Codex**: `/usr/bin/codex` (via official `extra/openai-codex`)
+* **GitHub CLI**: `/usr/bin/gh` (via official `extra/github-cli`)
 
 ---
 
@@ -189,12 +221,12 @@ agy login
 # 2. Anthropic Teams OAuth login in Claude Code
 claude login
 
-# 3. OpenAI ChatGPT Plus login in ~/.codex
-codex login
+# 3. OpenAI ChatGPT Plus login in ~/.codex (using /usr/bin/codex)
+/usr/bin/codex login
 
-# 4. OpenAI API Key login in ~/.codex-api
+# 4. OpenAI API Key login in ~/.codex-api (using /usr/bin/codex)
 mkdir -p ~/.codex-api
-CODEX_HOME="$HOME/.codex-api" codex login --api-key "sk-proj-YOUR_OPENAI_API_KEY"
+CODEX_HOME="$HOME/.codex-api" /usr/bin/codex login --api-key "sk-proj-YOUR_OPENAI_API_KEY"
 
 # 5. GitHub Copilot CLI authorization
 gh auth login --web -s copilot
@@ -357,14 +389,14 @@ Configure the shared MCP endpoints so Antigravity, Claude Code, and Codex can cr
       }
     },
     "openai-codex-plus": {
-      "command": "codex",
+      "command": "/usr/bin/codex",
       "args": ["mcp-server"],
       "env": {
         "CODEX_HOME": "/home/YOUR_USERNAME/.codex"
       }
     },
     "openai-codex-api": {
-      "command": "codex",
+      "command": "/usr/bin/codex",
       "args": ["mcp-server"],
       "env": {
         "CODEX_HOME": "/home/YOUR_USERNAME/.codex-api"
@@ -403,15 +435,15 @@ claude mcp add --scope user claude-fable-gcp \
   -e ANTHROPIC_MODEL="claude-fable-5-2" \
   -- claude mcp serve
 
-# Register OpenAI Codex (ChatGPT Plus)
+# Register OpenAI Codex (ChatGPT Plus) via /usr/bin/codex
 claude mcp add --scope user openai-codex-plus \
   -e CODEX_HOME="$HOME/.codex" \
-  -- codex mcp-server
+  -- /usr/bin/codex mcp-server
 
-# Register OpenAI Codex (API Key)
+# Register OpenAI Codex (API Key) via /usr/bin/codex
 claude mcp add --scope user openai-codex-api \
   -e CODEX_HOME="$HOME/.codex-api" \
-  -- codex mcp-server
+  -- /usr/bin/codex mcp-server
 
 # Register Native GitHub MCP Server via npx
 claude mcp add --scope user github-mcp \
@@ -497,7 +529,7 @@ Configure user-level MCP servers for Copilot Chat:
       }
     },
     "openai-codex": {
-      "command": "codex",
+      "command": "/usr/bin/codex",
       "args": ["mcp-server"],
       "env": {
         "CODEX_HOME": "/home/YOUR_USERNAME/.codex"
@@ -554,7 +586,7 @@ export GCP_AGENT_REGION="global"
 # Binary Discovery
 _CLAUDE_BIN=$(which claude 2>/dev/null || echo "$HOME/.local/bin/claude")
 _AGY_BIN=$(which agy 2>/dev/null || echo "$HOME/.local/bin/agy")
-_CODEX_BIN=$(which codex 2>/dev/null || echo "$HOME/.local/bin/codex")
+_CODEX_BIN="/usr/bin/codex"
 _GCLOUD_BIN=$(which gcloud 2>/dev/null || echo "/usr/bin/gcloud")
 
 # 1. Native Google Cloud ADC Check & Refresh

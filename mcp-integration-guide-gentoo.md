@@ -94,10 +94,24 @@ sudo emerge -av \
 
 *Note on Docker: If utilizing the containerized `gcloud` approach in Section 3A, also emerge `app-containers/docker` and `app-containers/docker-compose` and enable `docker.service`.*
 
+> ⚠️ **Important Package Clarification: Google Antigravity CLI (`agy`) vs Python Packages**
+> On Gentoo, the compiled command-line agent is provided by `dev-util/google-antigravity-cli::guru` (which installs `/usr/bin/agy`). Do **not** confuse this with `python-google-antigravity` or Python SDKs from PyPI/overlays, which are client libraries and do not provide the `agy` command-line interface.
+> 
+> *Alternative standalone installation without `guru`:*
+> If you do not wish to enable the `::guru` overlay for Antigravity, you can install Google's official compiled standalone binary directly into `~/.local/bin/agy`:
+> ```bash
+> mkdir -p ~/.local/bin
+> curl -fsSL https://antigravity.google/cli/install.sh | bash
+> ```
+> Or symlink the binary bundled automatically by the **Google Antigravity** VS Code extension:
+> ```bash
+> ln -sf ~/.antigravity/bin/agy ~/.local/bin/agy
+> ```
+
 Verify binary locations on your host system:
 - VS Code: `/usr/bin/code`
 - Claude Code: `/usr/bin/claude`
-- Antigravity CLI: `/usr/bin/agy`
+- Antigravity CLI: `/usr/bin/agy` (or `~/.local/bin/agy`)
 - OpenAI Codex: `/usr/bin/codex`
 - GitHub CLI: `/usr/bin/gh`
 
