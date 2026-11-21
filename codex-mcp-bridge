@@ -1,0 +1,94 @@
+#!/usr/bin/env python3
+import json
+import os
+import shutil
+import subprocess
+import sys
+
+# Locate native codex binary from extra/openai-codex
+CODEX_BIN = shutil.which("codex") or "/usr/bin/codex"
+HOME = os.path.expanduser("~")
+
+def send(msg):
+    sys.stdout.write(json.dumps(msg) + "\n")
+    sys.stdout.flush()
+
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        req = json.loads(line)
+    except json.JSONDecodeError:
+        continue
+
+    # Ignore notifications lacking an ID (e.g. notifications/initialized)
+    if "id" not in req:
+        continue
+
+    req_id = req.get("id")
+    method = req.get("method")
+
+    if method == "initialize":
+        send({
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "result": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {"tools": {}},
+                "serverInfo": {"name": "codex-mcp-bridge", "version": "1.0.0"}
+            }
+        })
+    elif method == "tools/list":
+        send({
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "result": {
+                "tools": [{
+                    "name": "ask_codex",
+                    "description": "Execute an instruction or code query non-interactively using OpenAI Codex CLI.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "prompt": {
+                                "type": "string",
+                                "description": "The coding task, prompt, or question for Codex"
+                            },
+                            "model": {
+                                "type": "string",
+                                "default": "gpt-5.3-codex",
+                                "description": "Target OpenAI model (e.g. gpt-5.3-codex, gpt-6.1, gpt-5.3-codex-mini)"
+                            }
+                        },
+                        "required": ["prompt"]
+                    }
+                }]
+            }
+        })
+    elif method == "tools/call":
+        args = req.get("params", {}).get("arguments", {})
+        prompt = args.get("prompt", "")
+        model = args.get("model", "gpt-5.3-codex")
+
+        env = os.environ.copy()
+        # Default to ~/.codex if not explicitly injected
+        if "CODEX_HOME" not in env:
+            env["CODEX_HOME"] = os.path.join(HOME, ".codex")
+
+        # Run Codex non-interactively using 'codex exec'
+        proc = subprocess.run(
+            [CODEX_BIN, "exec", "-m", model, prompt],
+            env=env,
+            capture_output=True,
+            text=True
+        )
+
+        output = proc.stdout if proc.returncode == 0 else f"Codex Error ({proc.returncode}): {proc.stderr}"
+        send({
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "result": {
+                "content": [{"type": "text", "text": output}],
+                "isError": proc.returncode != 0
+            }
+        })

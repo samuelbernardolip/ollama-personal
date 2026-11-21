@@ -307,7 +307,7 @@ for line in sys.stdin:
         env["GOOGLE_GENAI_USE_VERTEXAI"] = "True"
 
         proc = subprocess.run(
-            [AGY_BIN, "-m", model, "-p", prompt],
+            [AGY_BIN, "--model", model, "-p", prompt],
             env=env, capture_output=True, text=True
         )
         output = proc.stdout if proc.returncode == 0 else f"Execution Error ({proc.returncode}): {proc.stderr}"
