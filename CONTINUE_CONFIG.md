@@ -1,4 +1,4 @@
-# VS Code Continue Extension: Comprehensive Architecture & Setup Guide (v2)
+# VS Code Continue Extension: Comprehensive Architecture & Setup Guide (v3)
 
 An enterprise-grade, hardware-optimized configuration for the **Continue VS Code extension (`Continue.continue`)** paired with a unified **Ollama + CPU Reranker Docker Compose** stack, hardware-aware **RAG indexing**, and a native **Model Context Protocol (MCP)** multi-agent mesh on Arch Linux and Gentoo.
 
@@ -80,7 +80,7 @@ Save this unified specification in your compose workspace:
 ```yaml
 services:
   # ----------------------------------------------------------------------------
-  # 1. Ollama Inference Engine (NVIDIA GPU Accelerated)
+  # 1. Ollama Inference Engine (NVIDIA GPU Accelerated - Coding & Chat)
   # ----------------------------------------------------------------------------
   ollama:
     image: docker.io/ollama/ollama:latest
@@ -89,11 +89,13 @@ services:
     restart: unless-stopped
     environment:
       - OLLAMA_HOST=0.0.0.0
-      - OLLAMA_NUM_PARALLEL=4
+      - OLLAMA_NUM_PARALLEL=1          # Limits KV cache allocations to prevent CUDA OOM
+      - OLLAMA_MAX_LOADED_MODELS=1     # Keeps the coder model permanently pinned in VRAM
+      - OLLAMA_KEEP_ALIVE=24h
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-      - OLLAMA_FLASH_ATTENTION=1
-      - OLLAMA_KV_CACHE_TYPE=q8_0
+      - OLLAMA_FLASH_ATTENTION=1       # Halves KV-cache memory allocation
+      - OLLAMA_KV_CACHE_TYPE=q8_0      # 8-bit quantization prevents memory thrashing
     volumes:
       - /var/lib/ollama/data:/root/.ollama
     ports:
@@ -104,7 +106,28 @@ services:
       - label=disable
 
   # ----------------------------------------------------------------------------
-  # 2. Open-WebUI (Web Management Interface)
+  # 2. CPU Embedding Engine (16-Thread Ryzen 7 5800H - Zero GPU VRAM Used)
+  # ----------------------------------------------------------------------------
+  ollama-embed-cpu:
+    image: docker.io/ollama/ollama:latest
+    container_name: ollama-embed-cpu
+    hostname: ollama-embed-cpu
+    restart: unless-stopped
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_NUM_PARALLEL=2          # Allows concurrent background embedding requests
+      - OLLAMA_MAX_LOADED_MODELS=1
+      - OLLAMA_NUM_THREAD=12           # Allocates 12 threads across physical Zen 3 cores
+      - NVIDIA_VISIBLE_DEVICES=none    # Enforces 100% CPU execution; 0 MB VRAM used
+    volumes:
+      - /var/lib/ollama/data:/root/.ollama  # Shared volume avoids duplicate model downloads
+    ports:
+      - "127.0.0.1:11435:11434"       # Host port 11435 -> container port 11434
+    security_opt:
+      - label=disable
+
+  # ----------------------------------------------------------------------------
+  # 3. Open-WebUI (Web Management Interface)
   # ----------------------------------------------------------------------------
   open-webui:
     image: ghcr.io/open-webui/open-webui:main
@@ -126,7 +149,7 @@ services:
       - label=disable
 
   # ----------------------------------------------------------------------------
-  # 3. Local CPU Cross-Encoder Reranker (100% CPU, 0 MB VRAM)
+  # 4. Local CPU Cross-Encoder Reranker (100% CPU, 0 MB VRAM)
   # ----------------------------------------------------------------------------
   rerank-server:
     build:
@@ -392,3 +415,110 @@ docker exec -it ollama ollama ps
 docker logs -f rerank-server
 ```
 You will see incoming `POST /rerank` requests logged by Uvicorn in real-time as Continue scores code snippets.
+
+--------------------------------------------------------------------------------
+
+## 8. Continue Chat Mode Operational Guidelines & Token Optimization Strategy
+
+To achieve maximum performance and prevent token/memory exhaustion on consumer hardware (such as laptops with a 4GB GTX 1650 or workstations with an 8GB RTX 3050), follow this operational methodology derived from the Continue Chat Mode optimization specifications.
+
+### 8.1 Mandatory Chat Mode Enforcement (Avoid Agent & Plan Modes)
+
+When executing local extraction, refactoring, and summarization tasks:
+* **Stay Strictly in Chat Mode**: Open Continue (**`Ctrl+L`**) and ensure the mode selector at the bottom is set to **Chat**.
+* **Why Agent and Plan Modes Must Be Avoided on Low VRAM**:
+  * Agent and Plan modes inject Continue's internal tool schemas (`read_file`, `create_new_file`, `run_terminal_command`, etc.), adding **4,000 to 6,000 tokens of JSON schema overhead** to every prompt.
+  * Local 3B and 7B models frequently struggle with strict multi-turn JSON tool-calling loops, emitting malformed syntax or getting stuck in repetitive execution loops.
+  * **Chat mode** performs single-pass, deterministic completions directly against the exact files attached, leaving 100% of your context window available for source code.
+
+### 8.2 Why `@Codebase` Fails for Phase 1 Full-Project Summarization
+
+While `@Codebase` is powerful for answering specific semantic questions, it must **never** be used for full-project architectural extraction or repository inventorying:
+1. **Incomplete Coverage (Top-K Truncation)**: `@Codebase` embeds your prompt and retrieves only the top 10–20 chunks (512 tokens each) that semantically match the keywords. It does **not** read every file in your repository, silently skipping critical configuration files (such as `Jenkinsfile`, `Dockerfile`, CI pipelines, and playbooks).
+2. **Context Fragmentation**: Receiving disconnected 512-token snippets from a dozen files confuses small local models (`qwen2.5-coder:3b`), causing them to hallucinate relationships across files.
+3. **Latency Overhead**: Every `@Codebase` call incurs vector search and cross-encoder reranking latency before generation starts.
+4. **The Remedy**: For Phase 1 repository digests, use direct file attachment (**`@File`**) to guarantee 100% exhaustive code inspection.
+
+### 8.3 Folder Attachment & Deprecation of `@Folder`
+
+* **Deprecation Notice**: In modern releases of Continue, `@Folder` and `@Codebase` context provider syntax are officially deprecated in favor of native file providers and drag-and-drop actions.
+* **Modern Folder Attachment via Explorer**:
+  * In the VS Code Explorer sidebar, **right-click the target repository folder** (or select 3–5 related files with `Ctrl+Click` / `Shift+Click`).
+  * Select **Continue → Add to Chat** (or simply drag the folder directly from the Explorer into the Continue chat input box).
+  * Continue automatically expands the directory and attaches all valid source files as individual `@File` pills while strictly honoring your `.continueignore` rules.
+
+### 8.4 Complete 3-Phase Migration Workflow
+
+This end-to-end pipeline decouples zero-cost local code preparation from frontier cloud reasoning:
+
+```
+[ Local Raw Code & Repositories ]
+                │
+                ▼ (Filtered via .continueignore)
+[ Continue Local Chat Mode (Ctrl+L): Port 11434 (3B GPU) + Port 11435 (CPU Embed) ]
+                │
+                ▼ (Pre-processed via /digest & /synthesize)
+[ migration-prep/MASTER_ARCHITECTURE_SPEC.md (< 12,000 words / zero cloud tokens) ]
+                │
+                ▼ (Ingested into Antigravity Agent Mode via Ctrl+L)
+[ Google Antigravity Frontier Orchestrator (Gemini 3.1 Pro / Gemini 4 Carbon, 1M+ context) ]
+        │                       │                       │
+        ▼                       ▼                       ▼
+  claude-fable-gcp        gemini-carbon-gcp       openai-codex-plus / gitlab-mcp
+  (Phased Planning)     (Architecture Audit)     (Code Templates & Git Sync)
+```
+
+#### Phase 1: Local File Extraction (`/digest`)
+1. Open a clean chat session (**`Ctrl+L`**), confirm mode is **Chat**, and select `Laptop-Worker-3B`.
+2. Attach files for a single repository (either the entire folder for repos under 12k tokens via right-click, or 3–5 file batches for large repos).
+3. Type **/digest** and press **Enter**.
+4. Copy the Markdown response and save it into a thematic file in `migration-prep/` (e.g. `migration-prep/01-ci-jenkins.md`, `02-verification.md`, `03-ansible-roles.md`).
+5. Click **`+` (New Session)** to clear context between batches so prior tokens do not pollute subsequent prompts.
+
+#### Phase 2: Master Context Consolidation (`/synthesize`)
+1. Open a fresh Chat session (**`+`**), confirm mode is **Chat**.
+2. Attach *only* the generated digest files using `@File` (e.g. `@File migration-prep/01-ci-jenkins.md`, `@File migration-prep/02-verification.md`). Do **not** use `@Codebase` here.
+3. Type **/synthesize** and press **Enter**.
+4. Save the unified specification as **`migration-prep/MASTER_ARCHITECTURE_SPEC.md`** (target length: < 12,000 words / ~16k tokens).
+
+#### Phase 3: Frontier Multi-Agent Orchestration in Antigravity
+1. Close Continue and switch to **Google Antigravity (`Ctrl+L`)** in **Agent** mode on your **Google AI Pro** (`gemini-3.1-pro`) subscription or **Google Cloud Agent Platform** (`gemini-4-carbon`).
+2. Attach `@migration-prep/MASTER_ARCHITECTURE_SPEC.md`.
+3. Dispatch specialized tasks across your local MCP subagents:
+   * **Stage 1 (`claude-fable-gcp`)**: Design a 3-wave phased migration plan replacing legacy Jenkins/Puppet with modern CI/CD.
+   * **Stage 2 (`gemini-carbon-gcp`)**: Audit infrastructure coupling, hardcoded endpoints, and rollback risks.
+   * **Stage 3 (`openai-codex-plus`)**: Generate starter CI workflow templates and container build matrices.
+
+### 8.5 Toggling MCP in Continue on Low-VRAM Hardware
+
+Loading all 11 MCP servers injects **15,000 to 30,000+ tokens of raw JSON tool schemas** into every model turn. On a 4GB or 8GB GPU, this schema overhead saturates the KV cache, causes extreme generation latency, and triggers malformed tool calls.
+
+To maximize context space for code files during Phase 1 bulk extraction, temporarily disable MCP servers in Continue:
+* **Option A**: In `~/.continue/config.yaml`, set `mcpServers: []` (empty list).
+* **Option B**: Highlight the `mcpServers:` block in VS Code and press **`Ctrl+/`** to comment it out.
+* Reload VS Code (**`Ctrl+Shift+P` → `Developer: Reload Window`**).
+* *Note: Because Antigravity reads `~/.gemini/config/mcp_config.json`—not Continue's `config.yaml`—all 11 MCP servers remain permanently active and accessible inside Antigravity.*
+
+### 8.6 Workspace Filtering via `.continueignore`
+
+Create a `.continueignore` file in your workspace root to exclude static assets, build outputs, and lockfiles:
+
+```text
+node_modules/
+dist/
+build/
+target/
+.git/
+.venv/
+venv/
+__pycache__/
+*.lock
+*.min.js
+*.map
+*.sqlite3
+*.html
+*.json
+!package.json
+!composer.json
+migration-prep/
+```

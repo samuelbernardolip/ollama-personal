@@ -258,12 +258,14 @@ models:
     roles:
       - chat
       - edit
-    contextLength: 4096
+      - summarize
+    contextLength: 16384
     requestOptions:
       extraBodyProperties:
         options:
-          num_ctx: 4096
+          num_ctx: 16384
           num_predict: 2048
+          temperature: 0.1
 
   # 🖥️ OFFICE DISK SYNTHESIZER (Phase 1: Cross-Repo Synthesis on RTX 3050 8GB)
   - name: Office-Synthesizer-7B
@@ -273,18 +275,25 @@ models:
     roles:
       - chat
       - edit
-    contextLength: 8192
+      - summarize
+    contextLength: 16384
     requestOptions:
       extraBodyProperties:
         options:
-          num_ctx: 8192
+          num_ctx: 16384
           num_predict: 4096
+          temperature: 0.1
 
 # ==============================================================================
 # 3. CONTEXT PROVIDERS & RAG OPTIMIZATION (GTX 1650 4GB BUFFER)
 # ==============================================================================
 context:
-  # RAG Pipeline: Retrieves 12 vector candidates, scores via CPU reranker, passes only top 3
+  # Supported modern, non-deprecated context providers
+  - provider: file
+  - provider: tree
+  - provider: open
+  - provider: diff
+  # Two-Stage RAG Pipeline: Retrieves 12 vector candidates, scores via CPU reranker, passes only top 3
   - provider: codebase
     params:
       nRetrieve: 12
@@ -303,6 +312,11 @@ context:
 #   - OpenAI API (On-demand pay-as-you-go via Codex CLI)
 #   - GitHub MCP (Repository context & issues via host Node runtime)
 # ==============================================================================
+# NOTE ON PHASE 1 EXTRACTION / LOW-RESOURCE LAPTOP USAGE:
+# Loading all 11 MCP servers injects 15,000–30,000+ tokens of raw tool schemas into every prompt.
+# When running intensive Phase 1 file digests on low-VRAM machines (e.g. GTX 1650 4GB), you can
+# temporarily toggle MCP off in Continue by setting 'mcpServers: []' or commenting out the entries below.
+# All 11 MCP servers remain permanently active in Antigravity (~/.gemini/config/mcp_config.json).
 mcpServers:
   # 1. Google Cloud Gemini 4 Carbon via Native agy-mcp-bridge
   - name: gemini-carbon-gcp

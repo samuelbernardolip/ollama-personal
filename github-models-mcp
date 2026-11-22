@@ -1,0 +1,338 @@
+#!/usr/bin/env python3
+"""
+GitHub Copilot MCP Bridge for Antigravity.
+Connects directly to the GitHub Copilot runtime.
+Dynamically fetches the available models catalog and caches it with a configurable TTL.
+"""
+
+import os
+import sys
+import time
+import json
+import shutil
+import subprocess
+
+# Configurable Cache TTL in seconds (Default: 3600 seconds = 1 hour)
+# Can be changed via GITHUB_MODELS_CACHE_TTL environment variable
+DEFAULT_CACHE_TTL = 3600
+CACHE_FILE = os.path.expanduser("~/.config/antigravity-mcp/models_cache.json")
+
+COPILOT_BIN = (
+    os.path.expanduser("~/.local/share/gh/copilot/copilot")
+    if os.path.exists(os.path.expanduser("~/.local/share/gh/copilot/copilot"))
+    else shutil.which("copilot")
+)
+
+def get_cache_ttl() -> int:
+    try:
+        return int(os.environ.get("GITHUB_MODELS_CACHE_TTL", DEFAULT_CACHE_TTL))
+    except (ValueError, TypeError):
+        return DEFAULT_CACHE_TTL
+
+def fetch_models_dynamically() -> list:
+    """Query Copilot runtime via ACP protocol to dynamically retrieve all available models."""
+    if not COPILOT_BIN or not os.path.exists(COPILOT_BIN):
+        raise RuntimeError("Copilot CLI binary not found.")
+
+    proc = subprocess.Popen(
+        [COPILOT_BIN, "--acp"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True
+    )
+
+    try:
+        # Initialize ACP
+        init_req = json.dumps({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {"clientInfo": {"name": "antigravity-mcp", "version": "1.0"}}
+        }) + "\n"
+        proc.stdin.write(init_req)
+        proc.stdin.flush()
+        proc.stdout.readline()
+
+        # Create session to inspect available models
+        sess_req = json.dumps({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "session/new",
+            "params": {"cwd": "/tmp"}
+        }) + "\n"
+        proc.stdin.write(sess_req)
+        proc.stdin.flush()
+
+        # Read responses until we get result with models
+        models = []
+        for _ in range(5):
+            line = proc.stdout.readline()
+            if not line:
+                break
+            try:
+                data = json.loads(line)
+                avail = data.get("result", {}).get("models", {}).get("availableModels")
+                if avail is not None:
+                    models = avail
+                    break
+            except json.JSONDecodeError:
+                pass
+
+        if models:
+            formatted = []
+            for m in models:
+                formatted.append({
+                    "id": m.get("modelId"),
+                    "name": m.get("name"),
+                    "description": m.get("description", ""),
+                    "meta": m.get("_meta", {})
+                })
+            return formatted
+    finally:
+        proc.terminate()
+
+    return []
+
+def get_available_models(force_refresh: bool = False) -> list:
+    """Retrieve models from disk cache if fresh; otherwise fetch dynamically and cache."""
+    cache_ttl = get_cache_ttl()
+    now = time.time()
+
+    if not force_refresh and os.path.exists(CACHE_FILE):
+        try:
+            with open(CACHE_FILE, "r") as f:
+                cached_data = json.load(f)
+                cached_time = cached_data.get("timestamp", 0)
+                if now - cached_time < cache_ttl and "models" in cached_data:
+                    return cached_data["models"]
+        except Exception:
+            pass
+
+    # Fetch dynamically
+    try:
+        models = fetch_models_dynamically()
+        if models:
+            os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
+            with open(CACHE_FILE, "w") as f:
+                json.dump({"timestamp": now, "models": models}, f, indent=2)
+            return models
+    except Exception as e:
+        sys.stderr.write(f"Warning: Failed to fetch dynamic models catalog: {e}\n")
+
+    # Fallback to cached copy if available even if expired
+    if os.path.exists(CACHE_FILE):
+        try:
+            with open(CACHE_FILE, "r") as f:
+                return json.load(f).get("models", [])
+        except Exception:
+            pass
+
+    # Minimum hardcoded fallback if all else fails
+    return [
+        {"id": "auto", "name": "Auto", "description": "Let Copilot pick the best model"},
+        {"id": "grok-4.7", "name": "Grok 4.7", "description": "xAI Grok 4.7"},
+        {"id": "mai-code-2", "name": "MAI Code 2", "description": "MAI Code 2"},
+        {"id": "mai-code-2-flash", "name": "MAI Code 2 Flash", "description": "MAI Code 2 Flash"},
+        {"id": "claude-sonnet-5.5", "name": "Claude Sonnet 5.5", "description": "Claude Sonnet 5.5"}
+    ]
+
+TOOLS = [
+    {
+        "name": "ask_github_model",
+        "description": "Query GitHub Copilot model inference with your active GitHub Copilot personal subscription.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": "The user query or prompt to send to Copilot."
+                },
+                "model": {
+                    "type": "string",
+                    "description": "Model ID to invoke (e.g. grok-4.7, mai-code-2, mai-code-2-flash, claude-sonnet-5.5, gemini-3.8-flash, auto). Defaults to auto.",
+                    "default": "auto"
+                }
+            },
+            "required": ["prompt"]
+        }
+    },
+    {
+        "name": "list_github_models",
+        "description": "List all models dynamically discovered and available for your GitHub Copilot subscription, with caching support.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "refresh": {
+                    "type": "boolean",
+                    "description": "Force refresh the dynamic models catalog from Copilot runtime, bypassing cache.",
+                    "default": False
+                }
+            }
+        }
+    }
+]
+
+def query_copilot(prompt: str, model: str = "auto") -> str:
+    if not COPILOT_BIN or not os.path.exists(COPILOT_BIN):
+        raise RuntimeError("Copilot CLI binary not found at ~/.local/share/gh/copilot/copilot.")
+
+    cmd = [
+        COPILOT_BIN,
+        "--output-format", "json",
+        "-p", prompt
+    ]
+    if model and model != "auto":
+        cmd.extend(["--model", model])
+
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    if res.returncode != 0:
+        err_msg = ""
+        for line in res.stdout.splitlines():
+            try:
+                data = json.loads(line)
+                if data.get("type") == "session.error":
+                    err_msg = data.get("data", {}).get("message", "")
+            except Exception:
+                pass
+        raise RuntimeError(err_msg or res.stderr or f"Copilot exited with code {res.returncode}")
+
+    messages = []
+    for line in res.stdout.splitlines():
+        try:
+            data = json.loads(line)
+            if data.get("type") == "assistant.message":
+                content = data.get("data", {}).get("content", "")
+                if content:
+                    messages.append(content)
+        except Exception:
+            pass
+
+    return "".join(messages) or "No response from Copilot."
+
+def handle_jsonrpc(msg):
+    msg_id = msg.get("id")
+    method = msg.get("method")
+    params = msg.get("params", {})
+
+    if method == "initialize":
+        return {
+            "jsonrpc": "2.0",
+            "id": msg_id,
+            "result": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {
+                    "tools": {}
+                },
+                "serverInfo": {
+                    "name": "github-models-copilot-mcp",
+                    "version": "1.1.0"
+                }
+            }
+        }
+    elif method == "notifications/initialized":
+        return None
+    elif method == "ping":
+        return {"jsonrpc": "2.0", "id": msg_id, "result": {}}
+    elif method == "tools/list":
+        return {
+            "jsonrpc": "2.0",
+            "id": msg_id,
+            "result": {
+                "tools": TOOLS
+            }
+        }
+    elif method == "tools/call":
+        tool_name = params.get("name")
+        args = params.get("arguments", {})
+
+        if tool_name == "list_github_models":
+            force_refresh = bool(args.get("refresh", False))
+            models = get_available_models(force_refresh=force_refresh)
+            cache_info = {
+                "ttl_seconds": get_cache_ttl(),
+                "cache_file": CACHE_FILE,
+                "cached": not force_refresh and os.path.exists(CACHE_FILE),
+                "total_models": len(models),
+                "models": models
+            }
+            return {
+                "jsonrpc": "2.0",
+                "id": msg_id,
+                "result": {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": json.dumps(cache_info, indent=2)
+                        }
+                    ]
+                }
+            }
+        elif tool_name == "ask_github_model":
+            prompt = args.get("prompt")
+            model = args.get("model")
+            # If model is not explicitly provided, empty, or whitespace, default to "auto"
+            if not model or not str(model).strip():
+                model = "auto"
+            else:
+                model = str(model).strip()
+            try:
+                reply = query_copilot(prompt, model)
+                return {
+                    "jsonrpc": "2.0",
+                    "id": msg_id,
+                    "result": {
+                        "content": [
+                            {"type": "text", "text": reply}
+                        ]
+                    }
+                }
+            except Exception as e:
+                return {
+                    "jsonrpc": "2.0",
+                    "id": msg_id,
+                    "result": {
+                        "isError": True,
+                        "content": [
+                            {"type": "text", "text": f"Copilot error: {str(e)}"}
+                        ]
+                    }
+                }
+        else:
+            return {
+                "jsonrpc": "2.0",
+                "id": msg_id,
+                "error": {"code": -32601, "message": f"Tool not found: {tool_name}"}
+            }
+    else:
+        return {
+            "jsonrpc": "2.0",
+            "id": msg_id,
+            "error": {"code": -32601, "message": f"Method not supported: {method}"}
+        }
+
+def main():
+    while True:
+        line = sys.stdin.readline()
+        if not line:
+            break
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            msg = json.loads(line)
+            resp = handle_jsonrpc(msg)
+            if resp is not None:
+                sys.stdout.write(json.dumps(resp) + "\n")
+                sys.stdout.flush()
+        except Exception as e:
+            err_resp = {
+                "jsonrpc": "2.0",
+                "id": None,
+                "error": {"code": -32700, "message": f"Parse/execution error: {str(e)}"}
+            }
+            sys.stdout.write(json.dumps(err_resp) + "\n")
+            sys.stdout.flush()
+
+if __name__ == "__main__":
+    main()

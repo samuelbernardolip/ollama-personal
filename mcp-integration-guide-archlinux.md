@@ -41,6 +41,7 @@ This architecture establishes strict credential boundaries across four AI provid
 | **GitLab Admin LIP (19.5.3)** | Antigravity / Claude / Codex / Copilot / Continue | Native Remote MCP (`mcp-remote` via OAuth/PAT) | `~/.mcp-auth/` | `gitlab-admin-lip` | Institutional admin instance (`gladminlip_` prefix) |
 | **GitLab Legacy (18.2.8)** | Antigravity / Claude / Codex / Copilot / Continue | Stdio MCP (`@zereight/mcp-gitlab`) + PAT | `~/.config/antigravity-mcp/` | `gitlab-legacy` | Self-hosted legacy instance (`gllegacy_` prefix) |
 | **GitLab Admin Legacy (16 latest)** | Antigravity / Claude / Codex / Copilot / Continue | Stdio MCP (`@zereight/mcp-gitlab`) + PAT | `~/.config/antigravity-mcp/` | `gitlab-admin-legacy` | Self-hosted legacy admin instance (`gladminleg_` prefix) |
+
 ---
 
 #### 2. Arch Linux Host Prerequisites and Package Management
@@ -1091,19 +1092,37 @@ Because `GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_PERSONAL_ACCESS_TOKEN}"` dynami
 
 ---
 
----
+##### Step 7.3: Continue Chat Mode Operational Guidelines & Token Optimization Strategy
 
---------------------------------------------------------------------------------
+To achieve maximum performance and prevent token/memory exhaustion on consumer hardware (such as laptops with a 4GB GTX 1650 or workstations with an 8GB RTX 3050), follow this operational methodology derived from the Continue Chat Mode optimization specifications.
 
-### Two-Stage Local Token & Cost Optimization Architecture (Continue + Antigravity)
+###### 1. Two-Stage Division of Labor: Local Preparation vs. Cloud Orchestration
 
-When modernizing or migrating multi-repository codebases with dozens of configuration files and pipelines, passing raw repositories directly into frontier reasoning models wastes hundreds of thousands of metered tokens and risks context truncation.
+Running small local models (3B to 7B) as orchestrators over 11 MCP servers fails in practice because loading the complete tool catalog injects **15,000 to 30,000+ tokens of raw JSON tool schemas** into every model turn. On a 4GB or 8GB GPU buffer, this schema overhead saturates the KV cache, causes extreme generation latency, and triggers malformed tool-call JSON.
 
-To achieve maximum cost efficiency and prevent out-of-memory (OOM) failures on developer hardware (such as laptops with 4GB VRAM or desktops with 8GB VRAM), this environment implements a **strict two-stage processing pipeline**:
-1. **Stage 1: Zero-Cost Local Pre-Processing (VS Code Continue + Ollama + CPU Reranker)**: Local hardware indexes, extracts, and pre-compresses raw files into dense Markdown architectural digests without spending a single cloud API token.
-2. **Stage 2: High-Context Frontier Orchestration (VS Code Antigravity + Google AI Pro / Model Garden)**: Antigravity's 1M+ token context window ingests the clean local digest and orchestrates specialized MCP subagents (`claude-fable-gcp`, `gemini-carbon-gcp`, `openai-codex-plus`) to generate migration plans, audit infrastructure, and generate code.
+The optimal strategy cleanly decouples **data preparation** from **frontier orchestration**:
 
-#### 1. Hardware Allocation Strategy (Laptop vs. Office Desktop)
+```
+[ Local Raw Code & Repositories ]
+                │
+                ▼ (Filtered via .continueignore)
+[ Continue Local Chat Mode (Ctrl+L): Port 11434 (3B GPU) + Port 11435 (CPU Embed) ]
+                │
+                ▼ (Pre-processed via /digest & /synthesize)
+[ migration-prep/MASTER_ARCHITECTURE_SPEC.md (< 12,000 words / zero cloud tokens) ]
+                │
+                ▼ (Ingested into Antigravity Agent Mode via Ctrl+L)
+[ Google Antigravity Frontier Orchestrator (Gemini 3.1 Pro / Gemini 4 Carbon, 1M+ context) ]
+        │                       │                       │
+        ▼                       ▼                       ▼
+  claude-fable-gcp        gemini-carbon-gcp       openai-codex-plus / gitlab-mcp
+  (Phased Planning)     (Architecture Audit)     (Code Templates & Git Sync)
+```
+
+1. **Stage 1: Zero-Cost Local Pre-Processing (Continue + Ollama)**: Local hardware indexes, parses, and condenses multi-repository code into dense Markdown digests without spending a single cloud API token.
+2. **Stage 2: High-Context Frontier Orchestration (Antigravity)**: Antigravity's **1,000,000+ token context window** ingests the pre-compressed specification file in a single shot and dispatches specialized tasks across your MCP subagent mesh.
+
+###### 2. Hardware Allocation Matrix (Laptop vs. Office Desktop)
 
 | Workload Phase | Machine & Hardware | Model Roles | Responsibilities |
 | :--- | :--- | :--- | :--- |
@@ -1111,48 +1130,116 @@ To achieve maximum cost efficiency and prevent out-of-memory (OOM) failures on d
 | **Phase 1: Full-Workspace Synthesis** | Desktop (RTX 3050 8GB + 32GB RAM) | `qwen2.5-coder:7b` (GPU) + `bge-reranker-base` (CPU Container, port 8080) | Cross-repo `@codebase` semantic search and consolidation into master specification. |
 | **Phase 2: Frontier MCP Orchestration** | Flat-Rate Cloud (Google AI Pro in Antigravity) | `gemini-3.1-pro` / `gemini-4-carbon` (1M+ context) | Dispatches tasks across MCP subagents; consumes 0 local VRAM for tool schemas. |
 
-#### 2. Local Two-Stage RAG Indexing & `.continueignore` Setup
+###### 3. Continue Chat Mode Operational Rules (Why Agent/Plan Mode Fails)
 
-To index all project code locally without memory exhaustion or index pollution:
-1. **Parallel CPU Embedding Engine (`ollama-embed-cpu`)**: Run the dedicated CPU Ollama service on port 11435 (`NVIDIA_VISIBLE_DEVICES=none`). This allows Continue's `@codebase` indexer to embed files across all 16 Ryzen CPU threads in system RAM while your GPU coding model stays permanently loaded in VRAM on port 11434.
-2. **Embedded Vector Database (LanceDB)**: Continue stores vectors locally in `~/.continue/index/` using embedded LanceDB and SQLite metadata caches, requiring zero standalone vector database daemons.
-3. **Workspace Filtering via `.continueignore`**: Exclude static assets, build outputs, and lockfiles by placing `.continueignore` in the repository root:
-   ```text
-   node_modules/
-   dist/
-   build/
-   target/
-   .git/
-   .venv/
-   venv/
-   __pycache__/
-   *.lock
-   *.min.js
-   *.map
-   *.sqlite3
-   *.html
-   *.json
-   !package.json
-   !composer.json
-   ```
-4. **Local CPU Cross-Encoder Reranking**: Continue retrieves 12 candidate chunks via vector search, scores their exact relevance using `bge-reranker-base` on `http://localhost:8080`, and forwards only the top 3 highest-scoring snippets to the model.
+* **Strict Chat Mode Enforcement**: Open Continue (**`Ctrl+L`**) and ensure the mode selector at the bottom is set to **Chat**.
+* **Why Agent and Plan Modes Must Be Avoided on Low VRAM**:
+  * Agent and Plan modes inject Continue's internal tool schemas (`read_file`, `create_new_file`, `run_terminal_command`, etc.), adding **4,000 to 6,000 tokens of JSON schema overhead** to every prompt.
+  * Local 3B and 7B models frequently struggle with strict multi-turn JSON tool-calling loops, emitting malformed syntax or getting stuck in repetitive execution loops.
+  * **Chat mode** performs single-pass, deterministic completions directly against the exact files attached, leaving 100% of your context window available for source code.
 
-#### 3. Automated Workspace Summarization Workflow
+###### 4. Why `@Codebase` Fails for Phase 1 Full-Project Summarization
 
-Using custom Continue prompts, process large repositories in two discrete steps:
-1. **File-Level Extraction (`/digest`)**: Highlight 3 to 5 entry files (e.g., `Jenkinsfile`, Dockerfiles, playbooks) and invoke `/digest` to generate a 400-word structured technical summary in `migration-prep/`.
-2. **Cross-Repository Synthesis (`/synthesize`)**: Open a fresh Continue chat, attach the generated digest files using `@file`, and execute `/synthesize` to produce `migration-prep/MASTER_ARCHITECTURE_SPEC.md` (< 12,000 words).
+While `@Codebase` is powerful for answering specific semantic questions, it must **never** be used for full-project architectural extraction or repository inventorying:
+1. **Incomplete Coverage (Top-K Truncation)**: `@Codebase` embeds your prompt and retrieves only the top 10–20 chunks (512 tokens each) that semantically match the keywords. It does **not** read every file in your repository, silently skipping critical configuration files (such as `Jenkinsfile`, `Dockerfile`, CI pipelines, and playbooks).
+2. **Context Fragmentation**: Receiving disconnected 512-token snippets from a dozen files confuses small local models (`qwen2.5-coder:3b`), causing them to hallucinate relationships across files.
+3. **Latency Overhead**: Every `@Codebase` call incurs vector search and cross-encoder reranking latency before generation starts.
+4. **The Remedy**: For Phase 1 repository digests, use direct file attachment (**`@File`**) to guarantee 100% exhaustive code inspection.
 
-#### 4. Frontier MCP Orchestration in Antigravity
+###### 5. Folder Attachment & Deprecation of `@Folder`
 
-Loading 11 MCP servers injects 15,000 to 30,000+ tokens of JSON tool schemas into the system prompt. Local 3B–7B models choke on this schema overhead. By contrast, **Google Antigravity powered by Gemini Pro / Gemini 4 Carbon** features a 1M+ token context window, natively supporting all MCP servers simultaneously:
-1. **Open Antigravity Chat (`Ctrl+L`)**: Select `gemini-3.1-pro` (flat-rate Google AI Pro) or `gemini-4-carbon` (Google Cloud Agent Platform).
-2. **Attach the Synthesized Specification**: Reference `@migration-prep/MASTER_ARCHITECTURE_SPEC.md` directly.
-3. **Sequential Subagent Prompting**: Instruct Antigravity to route subtasks across the MCP mesh:
-   * *Architecture & Phased Planning*: Dispatched to `claude-fable-gcp` (`claude-fable-5-2`).
-   * *Infrastructure Risk & Dependency Audit*: Dispatched to `gemini-carbon-gcp` (`gemini-4-carbon`).
-   * *Code Generation & Test Templates*: Dispatched to `openai-codex-plus` (`ask_codex`).
-   * *Repository Synchronization*: Pushed or queried via `gitlab-com`, `gitlab-lip`, or `github-mcp`.
+* **Deprecation Notice**: In modern releases of Continue, `@Folder` and `@Codebase` context provider syntax are officially deprecated in favor of native file providers and drag-and-drop actions.
+* **Modern Folder Attachment via Explorer**:
+  * In the VS Code Explorer sidebar, **right-click the target repository folder** (or select 3–5 related files with `Ctrl+Click` / `Shift+Click`).
+  * Select **Continue → Add to Chat** (or simply drag the folder directly from the Explorer into the Continue chat input box).
+  * Continue automatically expands the directory and attaches all valid source files as individual `@File` pills while strictly honoring your `.continueignore` rules.
+
+###### 6. Step-by-Step 3-Phase Migration Workflow
+
+#### Phase 1: Local File Extraction (`/digest`)
+1. Open a clean chat session (**`Ctrl+L`**), confirm mode is **Chat**, and select `Laptop-Worker-3B`.
+2. Attach files for a single repository (either the entire folder for repos under 12k tokens via right-click, or 3–5 file batches for large repos).
+3. Type **/digest** and press **Enter**.
+4. Copy the Markdown response and save it into a thematic file in `migration-prep/` (e.g. `migration-prep/01-ci-jenkins.md`, `02-verification.md`, `03-ansible-roles.md`).
+5. Click **`+` (New Session)** to clear context between batches so prior tokens do not pollute subsequent prompts.
+
+#### Phase 2: Master Context Consolidation (`/synthesize`)
+1. Open a fresh Chat session (**`+`**), confirm mode is **Chat**.
+2. Attach *only* the generated digest files using `@File` (e.g. `@File migration-prep/01-ci-jenkins.md`, `@File migration-prep/02-verification.md`). Do **not** use `@Codebase` here.
+3. Type **/synthesize** and press **Enter**.
+4. Save the unified specification as **`migration-prep/MASTER_ARCHITECTURE_SPEC.md`** (target length: < 12,000 words / ~16k tokens).
+
+#### Phase 3: Frontier Multi-Agent Orchestration in Antigravity
+1. Close Continue and switch to **Google Antigravity (`Ctrl+L`)** in **Agent** mode on your **Google AI Pro** (`gemini-3.1-pro`) subscription or **Google Cloud Agent Platform** (`gemini-4-carbon`).
+2. Attach `@migration-prep/MASTER_ARCHITECTURE_SPEC.md`.
+3. Dispatch specialized tasks across your local MCP subagents:
+   * **Stage 1 (`claude-fable-gcp`)**: Design a 3-wave phased migration plan replacing legacy Jenkins/Puppet with modern CI/CD.
+   * **Stage 2 (`gemini-carbon-gcp`)**: Audit infrastructure coupling, hardcoded endpoints, and rollback risks.
+   * **Stage 3 (`openai-codex-plus`)**: Generate starter CI workflow templates and container build matrices.
+
+###### 7. Toggling MCP in Continue on Low-VRAM Hardware
+
+Loading all 11 MCP servers injects **15,000 to 30,000+ tokens of raw JSON tool schemas** into every model turn. On a 4GB or 8GB GPU, this schema overhead saturates the KV cache, causes extreme generation latency, and triggers malformed tool calls.
+
+To maximize context space for code files during Phase 1 bulk extraction, temporarily disable MCP servers in Continue:
+* **Option A**: In `~/.continue/config.yaml`, set `mcpServers: []` (empty list).
+* **Option B**: Highlight the `mcpServers:` block in VS Code and press **`Ctrl+/`** to comment it out.
+* Reload VS Code (**`Ctrl+Shift+P` → `Developer: Reload Window`**).
+* *Note: Because Antigravity reads `~/.gemini/config/mcp_config.json`—not Continue's `config.yaml`—all 11 MCP servers remain permanently active and accessible inside Antigravity.*
+
+###### 8. Workspace Filtering via `.continueignore`
+
+Create a `.continueignore` file in your workspace root to exclude static assets, build outputs, and lockfiles:
+
+```text
+node_modules/
+dist/
+build/
+target/
+.git/
+.venv/
+venv/
+__pycache__/
+*.lock
+*.min.js
+*.map
+*.sqlite3
+*.html
+*.json
+!package.json
+!composer.json
+migration-prep/
+```
+
+###### 9. Antigravity Multi-Agent Orchestration Prompt
+
+Paste this master prompt into the Antigravity chat panel (**`Ctrl+L`** in Agent mode) after generating `migration-prep/MASTER_ARCHITECTURE_SPEC.md`:
+
+```markdown
+Read `@migration-prep/MASTER_ARCHITECTURE_SPEC.md`. You are the lead enterprise migration architect orchestrating our specialized MCP subagents to modernize this software infrastructure.
+
+Execute this 3-stage multi-agent workflow sequentially, passing only the compact outputs from each stage to the next:
+
+### Stage 1: Architectural Migration Plan (`claude-fable-gcp`)
+Call `claude-fable-gcp` (model `claude-fable-5-2`) with the contents of `@migration-prep/MASTER_ARCHITECTURE_SPEC.md` and instruct it to:
+1. Design a 3-wave phased migration plan replacing legacy Jenkins and monolithic recipes with modern containerized CI/CD (GitHub Actions or GitLab CI) and decoupled validation gates.
+2. Structure the deliverables, dependencies, and cutover milestones for each repository.
+
+### Stage 2: Infrastructure & Risk Audit (`gemini-carbon-gcp`)
+Call `gemini-carbon-gcp` (using model `gemini-4-carbon-medium`) with the Wave 1–3 plan from Stage 1 and the Infrastructure Coupling section of `@migration-prep/MASTER_ARCHITECTURE_SPEC.md`. Instruct it to:
+1. Identify single points of failure, hardcoded external endpoints, base-image incompatibilities (e.g., EL7 to Rocky/Alma 9), and credential migration risks.
+2. Specify rollback procedures and parallel validation checks to ensure zero downtime.
+
+### Stage 3: Starter CI Implementation (`openai-codex-plus`)
+Call `openai-codex-plus` (`ask_codex` with model `gpt-5.3-codex`) with the Wave 1 specification from Stage 1. Instruct it to:
+1. Generate clean, parameterized CI workflow templates and container build matrices for the core verification pipeline.
+2. Provide a smoke-test parity checklist comparing legacy outputs with the new pipeline.
+
+### Final Output
+Synthesize all three subagent deliverables into a clean, publication-ready `MIGRATION_ROADMAP.md` in my workspace root.
+```
+
+---
 
 #### 8. Arch Linux KDE Plasma 6 (Wayland) and Systemd Configuration
 
