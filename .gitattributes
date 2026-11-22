@@ -1,3 +1,4 @@
 mcp-integration-guide-archlinux-personal.md filter=git-crypt diff=git-crypt
 mcp-integration-guide-gentoo-personal.md filter=git-crypt diff=git-crypt
+mcp_config.json filter=git-crypt diff=git-crypt
 
