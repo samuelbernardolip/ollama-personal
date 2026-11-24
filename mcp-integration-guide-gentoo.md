@@ -1,4 +1,4 @@
-# Complete MCP Integration Guide for VS Code on Gentoo Linux: Antigravity, Claude Code, OpenAI Codex, GitHub Copilot, Continue, and GitLab Multi-Instance Mesh (Enterprise Edition v7)
+# Complete MCP Integration Guide for VS Code on Gentoo Linux: Antigravity, Claude Code, OpenAI Codex, GitHub Copilot, Continue, and GitLab Multi-Instance Mesh (Enterprise Public Edition v9)
 
 An enterprise-grade reference architecture for orchestrating multi-provider AI agents, Model Context Protocol (MCP) servers, and isolated developer identities under Gentoo Linux (rolling release, systemd profile, KDE Plasma 6 on Wayland) addressing both **Containerized** and **Native Ebuild** Google Cloud CLI environments.
 
@@ -34,8 +34,7 @@ Both architectures guarantee identical, hermetic isolation across all four provi
 | **OpenAI ChatGPT Plus** | Codex IDE / `codex-plus` | Terminal OAuth (ChatGPT Web) | `~/.codex/` | `openai-codex-plus` | Flat €23/month (subject to cancellation) |
 | **OpenAI API** | Codex IDE / `codex-api` | Secret API Key (`sk-proj-...`) | `~/.codex-api/` | `openai-codex-api` | Pay-as-you-go per token balance |
 | **GitHub Copilot** | Copilot Chat VS Code | GitHub OAuth Token | `~/.config/github-copilot/` | `github-mcp` | Included via Student Pack / Monthly seat |
-| **GitHub Copilot Models** | Antigravity / Claude / Continue | Personal Copilot CLI Bridge (`github-models-mcp`) | `~/.config/antigravity-mcp/` | `github-models` | Included via Copilot Subscription (`auto` default) |
-| **GitLab.com** | Antigravity / Claude / Codex / Copilot / Continue | Native Remote MCP (`mcp-remote` via Bearer PAT / OAuth) | `~/.mcp-auth/` | `gitlab-com` | Included via SaaS Free/Premium (`glcom_` prefix) |
+| **GitLab.com** | Antigravity / Claude / Codex / Copilot / Continue | Native Remote MCP (`mcp-remote` via OAuth) | `~/.mcp-auth/` | `gitlab-com` | Included via SaaS Free/Premium (`glcom_` prefix) |
 | **GitLab LIP (19.5.3)** | Antigravity / Claude / Codex / Copilot / Continue | Native Remote MCP (`mcp-remote` via OAuth/PAT) | `~/.mcp-auth/` | `gitlab-lip` | Institutional production instance (`gllip_` prefix) |
 | **GitLab Admin LIP (19.5.3)** | Antigravity / Claude / Codex / Copilot / Continue | Native Remote MCP (`mcp-remote` via OAuth/PAT) | `~/.mcp-auth/` | `gitlab-admin-lip` | Institutional admin instance (`gladminlip_` prefix) |
 | **GitLab Legacy (18.2.8)** | Antigravity / Claude / Codex / Copilot / Continue | Stdio MCP (`@zereight/mcp-gitlab`) + PAT | `~/.config/antigravity-mcp/` | `gitlab-legacy` | Self-hosted legacy instance (`gllegacy_` prefix) |
@@ -327,29 +326,11 @@ printenv "sk-proj-YOUR_OPENAI_API_KEY" | CODEX_HOME="$HOME/.codex-api" /usr/bin/
 # 5. GitHub Copilot CLI authorization
 /usr/bin/gh auth login --web -s copilot
 
-# 6. Initialize Isolated Credential Directory for GitLab Instances (PAT)
+# 6. Initialize Isolated Credential Directory for Legacy GitLab Instances (PAT)
 mkdir -p ~/.config/antigravity-mcp ~/.mcp-auth
 chmod 700 ~/.config/antigravity-mcp ~/.mcp-auth
 
-# Configure gitlab.com (19.5+ OAuth / Bearer PAT)
-cat << 'EOF' > ~/.config/antigravity-mcp/gitlab-com.env
-GITLAB_PERSONAL_ACCESS_TOKEN=glpat-YOUR_GITLAB_COM_TOKEN
-EOF
-chmod 600 ~/.config/antigravity-mcp/gitlab-com.env
-
-# Configure gitlab.modern.example.org (19.5.3 Production)
-cat << 'EOF' > ~/.config/antigravity-mcp/gitlab-modern.env
-GITLAB_PERSONAL_ACCESS_TOKEN=glpat-YOUR_MODERN_PROD_TOKEN
-EOF
-chmod 600 ~/.config/antigravity-mcp/gitlab-modern.env
-
-# Configure gitlab-admin.modern.example.org (19.5.3 Admin)
-cat << 'EOF' > ~/.config/antigravity-mcp/gitlab-admin-modern.env
-GITLAB_PERSONAL_ACCESS_TOKEN=glpat-YOUR_MODERN_ADMIN_TOKEN
-EOF
-chmod 600 ~/.config/antigravity-mcp/gitlab-admin-modern.env
-
-# Configure gitlab.legacy.example.org (v18.2.8 Legacy)
+# Configure gitlab.legacy.example.org (v18.2.8)
 cat << 'EOF' > ~/.config/antigravity-mcp/gitlab-legacy.env
 GITLAB_PERSONAL_ACCESS_TOKEN=glpat-YOUR_LEGACY_TOKEN
 GITLAB_API_URL=https://gitlab.legacy.example.org
@@ -360,7 +341,7 @@ GITLAB_TOOLSETS=issues,merge_requests,repositories,pipelines,wiki
 EOF
 chmod 600 ~/.config/antigravity-mcp/gitlab-legacy.env
 
-# Configure gitlab-admin.legacy.example.org (v16 latest Legacy Admin)
+# Configure gitlab-admin.legacy.example.org (v16 latest)
 cat << 'EOF' > ~/.config/antigravity-mcp/gitlab-admin-legacy.env
 GITLAB_PERSONAL_ACCESS_TOKEN=glpat-YOUR_ADMIN_LEGACY_TOKEN
 GITLAB_API_URL=https://gitlab-admin.legacy.example.org
@@ -370,7 +351,6 @@ GITLAB_TOOLSETS=issues,merge_requests,repositories,pipelines,wiki
 # GITLAB_PERMISSION_MODE=readonly
 EOF
 chmod 600 ~/.config/antigravity-mcp/gitlab-admin-legacy.env
-
 ```
 
 ---
@@ -620,6 +600,216 @@ EOF
 chmod +x ~/.local/bin/codex-mcp-bridge
 ```
 
+### Step 5.3: Install `github-models-mcp` (GitHub Copilot Models Bridge)
+
+The standard GitHub MCP server (`@modelcontextprotocol/server-github`) integrates exclusively with repository REST/GraphQL APIs (issues, pull requests, commits, and code search) and **cannot perform AI model completions**. Because GitHub retired the standalone, public free tier of GitHub Models (`models.github.ai`) in favor of authenticated **GitHub Copilot subscriptions**, model completions are routed directly through your local Copilot CLI runtime session.
+
+This zero-dependency Python bridge (`~/.local/bin/github-models-mcp`) interacts with the official Copilot CLI via its Agent Client Protocol (`copilot --acp`), dynamically discovers your available models (e.g. `claude-sonnet-5.5`, `grok-4.7`, `mai-code-2`, `mai-code-2-flash`, `openai/gpt-4o`, `kimi-k3`), caches them with a configurable TTL, and defaults to Copilot's cost-discounted `auto` model routing:
+
+```bash
+mkdir -p ~/.local/bin ~/.config/antigravity-mcp
+
+cat << 'EOF' > ~/.local/bin/github-models-mcp
+#!/usr/bin/env python3
+import json
+import os
+import shutil
+import subprocess
+import sys
+import time
+
+COPILOT_BIN = (
+    os.path.expanduser('~/.local/share/gh/copilot/copilot')
+    if os.path.exists(os.path.expanduser('~/.local/share/gh/copilot/copilot'))
+    else shutil.which('copilot') or 'copilot'
+)
+CACHE_DIR = os.path.expanduser('~/.config/antigravity-mcp')
+CACHE_FILE = os.path.join(CACHE_DIR, 'models_cache.json')
+CACHE_TTL = int(os.environ.get('GITHUB_MODELS_CACHE_TTL', '3600'))
+
+def send(msg):
+    sys.stdout.write(json.dumps(msg) + "\n")
+    sys.stdout.flush()
+
+def get_cached_models(force_refresh=False):
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    if not force_refresh and os.path.exists(CACHE_FILE):
+        try:
+            mtime = os.path.getmtime(CACHE_FILE)
+            if (time.time() - mtime) < CACHE_TTL:
+                with open(CACHE_FILE, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    if isinstance(data, list) and len(data) > 0:
+                        return data
+        except Exception:
+            pass
+
+    # Discover models dynamically via copilot --acp
+    try:
+        res = subprocess.run([COPILOT_BIN, '--acp'], input='{"method":"models/list"}\n',
+                             capture_output=True, text=True, timeout=5)
+        if res.returncode == 0:
+            for line in res.stdout.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    p = json.loads(line)
+                    if 'result' in p and 'models' in p['result']:
+                        models = p['result']['models']
+                        with open(CACHE_FILE, 'w', encoding='utf-8') as f:
+                            json.dump(models, f, indent=2)
+                        return models
+                except Exception:
+                    continue
+    except Exception:
+        pass
+
+    # High-quality fallback models available on Copilot subscriptions
+    fallback = [
+        {"id": "auto", "name": "Auto (Cost-Discounted Selection)", "description": "Default: Let Copilot automatically select the best model at discounted quota rate."},
+        {"id": "claude-sonnet-5.5", "name": "Claude Sonnet 5.5", "description": "Anthropic frontier coding & reasoning engine via Copilot."},
+        {"id": "grok-4.7", "name": "xAI Grok 4.7", "description": "xAI reasoning & algorithmic intelligence model via Copilot."},
+        {"id": "mai-code-2", "name": "Microsoft AI Code 2", "description": "Microsoft specialized code generation and refactoring engine."},
+        {"id": "mai-code-2-flash", "name": "Microsoft AI Code 2 Flash", "description": "Ultra-low-latency code completion engine via Copilot."},
+        {"id": "openai/gpt-4o", "name": "OpenAI GPT-4o", "description": "Flagship multimodal developer model via Copilot."},
+        {"id": "openai/gpt-4o-mini", "name": "OpenAI GPT-4o-mini", "description": "Fast, lightweight cost-effective coding model."},
+        {"id": "kimi-k3", "name": "Moonshot Kimi K3", "description": "Long-context reasoning & document analysis model."}
+    ]
+    try:
+        with open(CACHE_FILE, 'w', encoding='utf-8') as f:
+            json.dump(fallback, f, indent=2)
+    except Exception:
+        pass
+    return fallback
+
+TOOLS = [
+    {
+        "name": "ask_github_model",
+        "description": "Query GitHub Copilot model inference with your active GitHub Copilot personal subscription. Defaults to auto for discounted quota usage.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "description": "The coding prompt, task, or question for Copilot model inference."
+                },
+                "model": {
+                    "type": "string",
+                    "default": "auto",
+                    "description": "Target Copilot model ID (e.g. auto, claude-sonnet-5.5, grok-4.7, mai-code-2, mai-code-2-flash, openai/gpt-4o). Defaults to auto."
+                }
+            },
+            "required": ["prompt"]
+        }
+    },
+    {
+        "name": "list_github_models",
+        "description": "List all models available on your active GitHub Copilot subscription, including dynamic cached catalog.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "refresh": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Force refresh the models catalog from Copilot runtime, bypassing local cache."
+                }
+            }
+        }
+    }
+]
+
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        req = json.loads(line)
+    except Exception:
+        continue
+
+    if "id" not in req:
+        continue
+
+    req_id = req.get("id")
+    method = req.get("method")
+
+    if method == "initialize":
+        send({
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "result": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {"tools": {}},
+                "serverInfo": {"name": "github-models-mcp", "version": "1.0.0"}
+            }
+        })
+    elif method == "tools/list":
+        send({
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "result": {"tools": TOOLS}
+        })
+    elif method == "tools/call":
+        params = req.get("params", {})
+        tool_name = params.get("name")
+        args = params.get("arguments", {})
+
+        if tool_name == "list_github_models":
+            force_refresh = args.get("refresh", False)
+            models = get_cached_models(force_refresh=force_refresh)
+            send({
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {
+                    "content": [{"type": "text", "text": json.dumps(models, indent=2)}],
+                    "isError": False
+                }
+            })
+        elif tool_name == "ask_github_model":
+            prompt = args.get("prompt", "")
+            model = args.get("model", "auto")
+            if not model or model.strip() == "":
+                model = "auto"
+
+            cmd = [COPILOT_BIN, "-p", prompt] if model == "auto" else [COPILOT_BIN, "--model", model, "-p", prompt]
+            try:
+                proc = subprocess.run(cmd, capture_output=True, text=True)
+                output = proc.stdout if proc.returncode == 0 else f"Copilot Error ({proc.returncode}): {proc.stderr}"
+                send({
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": {
+                        "content": [{"type": "text", "text": output}],
+                        "isError": proc.returncode != 0
+                    }
+                })
+            except Exception as e:
+                send({
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": {
+                        "content": [{"type": "text", "text": f"Bridge Execution Error: {str(e)}"}],
+                        "isError": True
+                    }
+                })
+EOF
+
+chmod +x ~/.local/bin/github-models-mcp
+```
+
+Verify the bridge protocol handshake directly in your terminal:
+
+```bash
+printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n{"jsonrpc":"2.0","id":2,"method":"tools/list"}\n' \
+  | ~/.local/bin/github-models-mcp
+```
+
+Confirm that the output returns `protocolVersion: 2024-11-05` and registers both `ask_github_model` (with default `auto`) and `list_github_models`.
+
+
+---
+
 ## 6. MCP Server Configurations Across All Extensions
 
 Configure the shared MCP endpoints so Antigravity, Claude Code, and Codex can cross-call any provider backend on demand.
@@ -706,22 +896,16 @@ For Copilot agents, Continue, and `@modelcontextprotocol/server-github`, a **Cla
 
 Connecting multiple GitLab servers across distinct versions requires a hybrid architecture tailored to each instance's underlying MCP capabilities:
 
-##### 1. Modern Instances (GitLab 19.5+): `gitlab.com`, `gitlab.modern.example.org` & `gitlab-admin.modern.example.org`
+##### 1. Modern Instances (GitLab 19.5+): `gitlab.com`, `gitlab.lip.pt` & `gitlab-admin.lip.pt`
 
-* **Native Remote Endpoint Path (`/api/v4/mcp`)**: Starting from GitLab 19.5, the official remote GitLab MCP server is served directly at `/api/v4/mcp`:
-  * `https://gitlab.com/api/v4/mcp`
-  * `https://gitlab.modern.example.org/api/v4/mcp`
-  * `https://gitlab-admin.modern.example.org/api/v4/mcp`
-  *Note*: Targeting base hostnames (e.g. `https://gitlab.com`) fails because base URLs return HTML web pages rather than the JSON-RPC Model Context Protocol stream.
-* **Authorization Method (`Authorization: Bearer <TOKEN>`)**: Remote GitLab 19.5+ endpoints require an explicit authorization header passed via `--header "Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN"`. Without this header, requests return `401 Unauthorized` and fail to initialize tool schemas.
-* **Secret-Free Subshell Execution**: Antigravity executes `mcp-remote` inside a POSIX subshell wrapper:
-  `sh -c 'set -a && [ -f "$HOME/.config/antigravity-mcp/gitlab-<name>.env" ] && . "$HOME/.config/antigravity-mcp/gitlab-<name>.env"; set +a && exec npx -y mcp-remote <endpoint> ...'`
-  This loads `GITLAB_PERSONAL_ACCESS_TOKEN` directly from `chmod 600` files without baking plain-text tokens into configuration files.
+* **Native Remote Endpoint**: GitLab 19.5+ includes a native `/api/v4/mcp` endpoint.
+* **Client Architecture (`mcp-remote`)**: The `mcp-remote` proxy acts as a local stdio client that speaks to remote HTTP MCP endpoints, implementing OAuth 2.0 Dynamic Client Registration.
+* **Automatic Browser Login**: On the first tool invocation, `mcp-remote` intercepts the 401 challenge, opens your default web browser to the GitLab login screen, and caches the granted session token in `~/.mcp-auth/<url-hash>/`.
 * **Toolset Optimization**: GitLab's MCP endpoint exposes groups of tools controlled by the `X-Gitlab-Enabled-Mcp-Server-Toolsets` HTTP header. By declaring `core,merge_requests,work_items,repository,ci,wikis,code_security`, you retain all essential developer tools while enabling opt-in `wikis` and `code_security`, and trimming `duo_agent_platform` (which is unavailable or unneeded on standard/free accounts, saving ~20k tokens from the agent context window). Note that `meta` (e.g. `get_mcp_server_version`) is always included automatically.
 * **Tool-Name Prefixes**: Declaring `X-Gitlab-Mcp-Server-Tool-Name-Prefix:<prefix>_` prefixes every tool exposed by that server:
   * `gitlab.com` -> `glcom_` (e.g. `glcom_list_projects`, `glcom_get_file_contents`)
-  * `gitlab.modern.example.org` -> `glmod_` (e.g. `glmod_list_projects`, `glmod_create_merge_request`)
-  * `gitlab-admin.modern.example.org` -> `gladminmod_` (e.g. `gladminmod_list_projects`, `gladminmod_list_users`)
+  * `gitlab.lip.pt` -> `gllip_` (e.g. `gllip_list_projects`, `gllip_create_merge_request`)
+  * `gitlab-admin.lip.pt` -> `gladminlip_` (e.g. `gladminlip_list_projects`, `gladminlip_list_users`)
   This completely prevents tool namespace collisions when multiple GitLab instances are loaded into the same agent session.
 
 ##### 2. Legacy Instances (GitLab < 19.5): `gitlab.legacy.example.org` (18.2.8) & `gitlab-admin.legacy.example.org` (16.x latest)
@@ -734,44 +918,20 @@ Connecting multiple GitLab servers across distinct versions requires a hybrid ar
   3. `GITLAB_TOOL_PREFIX=gllegacy_` and `GITLAB_TOOL_PREFIX=gladminleg_` isolate legacy tools cleanly.
   4. Setting `GITLAB_TOOLSETS=issues,merge_requests,repositories,pipelines,wiki` loads the exact essential tools while saving ~50k tokens compared to `GITLAB_TOOLSETS=all`.
 
-##### 3. How to Generate Required Personal Access Tokens (PAT) for GitLab Instances
+##### 3. How to Create Personal Access Tokens (PAT) for Legacy Instances
 
-###### A. Procedure for Modern Instances (GitLab 19.5+: `gitlab.com`, `gitlab.modern.example.org`, `gitlab-admin.modern.example.org`)
-
-1. Sign in to your GitLab instance (e.g. `https://gitlab.com` or `https://gitlab.modern.example.org`).
-2. Navigate to **User Settings** (click your profile avatar in the upper-right corner) -> **Access Tokens** (or **Personal access tokens** in left sidebar).
-3. Click **Add new token**.
-4. Configure the token parameters:
-   * **Token name**: e.g. `Antigravity-GitLab-19.5-MCP` (or `VSCode-Agent-MCP`).
-   * **Expiration date**: Set your organization-compliant rotation policy (e.g. 90 days or 1 year).
-5. Select required scopes:
-   * `api` — **Full read/write access** to projects, issues, merge requests, repository contents, and CI/CD pipelines. This scope is required if you want Antigravity to create merge requests, push code commits, or trigger pipelines.
-   * `read_api` — **Read-only access** to the API. Use this scope if you require strict read-only security where the AI agent only reads repositories, reviews open MRs, or inspects CI logs.
-6. Click **Create personal access token**.
-7. Copy the generated `glpat-...` string immediately (GitLab will never display it again).
-8. Save the token into the dedicated environment file:
-   ```bash
-   echo "GITLAB_PERSONAL_ACCESS_TOKEN=glpat-YOUR_COPIED_TOKEN" > ~/.config/antigravity-mcp/gitlab-com.env
-   chmod 600 ~/.config/antigravity-mcp/gitlab-com.env
-   ```
-   *(Repeat for `gitlab-modern.env` and `gitlab-admin-modern.env` using their respective instance tokens).*
-
-###### B. Procedure for Legacy Instances (GitLab < 19.5: `gitlab.legacy.example.org` [18.2.8] & `gitlab-admin.legacy.example.org` [16.x])
-
-1. Sign in to your self-hosted legacy instance (`https://gitlab.legacy.example.org` or `https://gitlab-admin.legacy.example.org`).
-2. Navigate to **User Settings** -> **Access Tokens**.
-3. Click **Add new token**, set name (e.g. `Antigravity-GitLab-Legacy-PAT`), and set expiration.
-4. Select required scopes:
-   * `api` — Full access to repository, issues, merge requests, and pipelines.
-   * `read_api` — Read-only access (pair with `GITLAB_PERMISSION_MODE=readonly` in `.env`).
-5. Click **Create personal access token** and copy the `glpat-...` string immediately.
-6. Populate the corresponding environment configuration:
-   * For `gitlab.legacy.example.org`: `~/.config/antigravity-mcp/gitlab-legacy.env`
-   * For `gitlab-admin.legacy.example.org`: `~/.config/antigravity-mcp/gitlab-admin-legacy.env`
+1. Sign in to your self-hosted GitLab instance (`https://gitlab.legacy.example.org` or `https://gitlab-admin.legacy.example.org`).
+2. Go to **User Settings** (or click your profile avatar) -> **Access Tokens**.
+3. Click **Add new token**, provide a descriptive name (e.g. `VSCode-Agent-MCP`), and set an expiration window.
+4. Select the necessary scopes:
+   * `api` — Full read/write access to repository, issues, merge requests, and pipelines.
+   * `read_api` — Read-only access to projects and issues. (If selected, also add `GITLAB_PERMISSION_MODE=readonly` to the `.env` file).
+5. Click **Create personal access token** and copy the `glpat-...` string immediately into your `.env` file (`~/.config/antigravity-mcp/gitlab-legacy.env` or `gitlab-admin-legacy.env`).
 
 ##### 4. Institutional SSL / Custom CA Certificates
 
-If internal academic instances (e.g., `lip.pt`, `acnca.pt`) use private or enterprise root certificates, Node.js can be configured to trust your host certificates by adding `NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt` to the `.env` files or exporting it in your environment.
+If internal academic instances (e.g., `lip.pt`, `example.org`) use private or enterprise root certificates, Node.js can be configured to trust your host certificates by adding `NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt` to the `.env` files or exporting it in your environment.
+
 
 #### Configuration Path Resolution and Compatibility Symlink
 
@@ -817,21 +977,21 @@ claude mcp add --scope user github-mcp \
   -e GITHUB_PERSONAL_ACCESS_TOKEN="${GITHUB_PERSONAL_ACCESS_TOKEN}" \
   -- npx -y @modelcontextprotocol/server-github
 
-# Register GitHub Models MCP (Copilot AI Inference)
+# Register GitHub Models Bridge via Copilot Runtime
 claude mcp add --scope user github-models \
-  -- /home/YOUR_USERNAME/.local/bin/github-models-mcp
+  -- "/home/YOUR_USERNAME/.local/bin/github-models-mcp"
 
-# Register GitLab.com (SaaS, 19.5+) via mcp-remote
+# Register GitLab.com (SaaS, 19.5+) via mcp-remote + Bearer Header
 claude mcp add --scope user gitlab-com \
-  -- sh -c 'set -a && [ -f "$HOME/.config/antigravity-mcp/gitlab-com.env" ] && . "$HOME/.config/antigravity-mcp/gitlab-com.env"; set +a && exec npx -y mcp-remote https://gitlab.com/api/v4/mcp --header "Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN" --header "X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security" --header "X-Gitlab-Mcp-Server-Tool-Name-Prefix:glcom_"'
+  -- sh -c 'set -a && [ -f "$HOME/.config/antigravity-mcp/gitlab-com.env" ] && . "$HOME/.config/antigravity-mcp/gitlab-com.env"; set +a && exec npx -y mcp-remote https://gitlab.com/api/v4/mcp --header "Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN" --header X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security --header X-Gitlab-Mcp-Server-Tool-Name-Prefix:glcom_
 
-# Register GitLab Modern (19.5+) via mcp-remote
-claude mcp add --scope user gitlab-modern \
-  -- sh -c 'set -a && [ -f "$HOME/.config/antigravity-mcp/gitlab-modern.env" ] && . "$HOME/.config/antigravity-mcp/gitlab-modern.env"; set +a && exec npx -y mcp-remote https://gitlab.modern.example.org/api/v4/mcp --header "Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN" --header "X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security" --header "X-Gitlab-Mcp-Server-Tool-Name-Prefix:glmod_"'
+# Register GitLab LIP (19.5.3) via mcp-remote + Bearer Header
+claude mcp add --scope user gitlab-lip \
+  -- sh -c 'set -a && [ -f "$HOME/.config/antigravity-mcp/gitlab-lip.env" ] && . "$HOME/.config/antigravity-mcp/gitlab-lip.env"; set +a && exec npx -y mcp-remote https://gitlab.lip.pt/api/v4/mcp --header "Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN" --header X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security --header X-Gitlab-Mcp-Server-Tool-Name-Prefix:gllip_
 
-# Register GitLab Admin Modern (19.5+) via mcp-remote
-claude mcp add --scope user gitlab-admin-modern \
-  -- sh -c 'set -a && [ -f "$HOME/.config/antigravity-mcp/gitlab-admin-modern.env" ] && . "$HOME/.config/antigravity-mcp/gitlab-admin-modern.env"; set +a && exec npx -y mcp-remote https://gitlab-admin.modern.example.org/api/v4/mcp --header "Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN" --header "X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security" --header "X-Gitlab-Mcp-Server-Tool-Name-Prefix:gladminmod_"'
+# Register GitLab Admin LIP (19.5.3) via mcp-remote + Bearer Header
+claude mcp add --scope user gitlab-admin-lip \
+  -- sh -c 'set -a && [ -f "$HOME/.config/antigravity-mcp/gitlab-admin-lip.env" ] && . "$HOME/.config/antigravity-mcp/gitlab-admin-lip.env"; set +a && exec npx -y mcp-remote https://gitlab-admin.lip.pt/api/v4/mcp --header "Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN" --header X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security --header X-Gitlab-Mcp-Server-Tool-Name-Prefix:gladminlip_
 
 # Register GitLab Legacy (18.2.8) via @zereight/mcp-gitlab + .env
 claude mcp add --scope user gitlab-legacy \
@@ -883,18 +1043,18 @@ args = [
   "set -a && [ -f \"$HOME/.config/antigravity-mcp/gitlab-com.env\" ] && . \"$HOME/.config/antigravity-mcp/gitlab-com.env\"; set +a && exec npx -y mcp-remote https://gitlab.com/api/v4/mcp --header \"Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN\" --header \"X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security\" --header \"X-Gitlab-Mcp-Server-Tool-Name-Prefix:glcom_\""
 ]
 
-[mcp_servers.gitlab-modern]
+[mcp_servers.gitlab-lip]
 command = "sh"
 args = [
   "-c",
-  "set -a && [ -f \"$HOME/.config/antigravity-mcp/gitlab-modern.env\" ] && . \"$HOME/.config/antigravity-mcp/gitlab-modern.env\"; set +a && exec npx -y mcp-remote https://gitlab.modern.example.org/api/v4/mcp --header \"Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN\" --header \"X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security\" --header \"X-Gitlab-Mcp-Server-Tool-Name-Prefix:glmod_\""
+  "set -a && [ -f \"$HOME/.config/antigravity-mcp/gitlab-lip.env\" ] && . \"$HOME/.config/antigravity-mcp/gitlab-lip.env\"; set +a && exec npx -y mcp-remote https://gitlab.lip.pt/api/v4/mcp --header \"Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN\" --header \"X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security\" --header \"X-Gitlab-Mcp-Server-Tool-Name-Prefix:gllip_\""
 ]
 
-[mcp_servers.gitlab-admin-modern]
+[mcp_servers.gitlab-admin-lip]
 command = "sh"
 args = [
   "-c",
-  "set -a && [ -f \"$HOME/.config/antigravity-mcp/gitlab-admin-modern.env\" ] && . \"$HOME/.config/antigravity-mcp/gitlab-admin-modern.env\"; set +a && exec npx -y mcp-remote https://gitlab-admin.modern.example.org/api/v4/mcp --header \"Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN\" --header \"X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security\" --header \"X-Gitlab-Mcp-Server-Tool-Name-Prefix:gladminmod_\""
+  "set -a && [ -f \"$HOME/.config/antigravity-mcp/gitlab-admin-lip.env\" ] && . \"$HOME/.config/antigravity-mcp/gitlab-admin-lip.env\"; set +a && exec npx -y mcp-remote https://gitlab-admin.lip.pt/api/v4/mcp --header \"Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN\" --header \"X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security\" --header \"X-Gitlab-Mcp-Server-Tool-Name-Prefix:gladminlip_\""
 ]
 
 [mcp_servers.gitlab-legacy]
@@ -961,6 +1121,13 @@ GitHub Copilot operates in VS Code via official marketplace extensions. Configur
         "CODEX_HOME": "/home/YOUR_USERNAME/.codex"
       }
     },
+    "github-models": {
+      "command": "sh",
+      "args": [
+        "-c",
+        "set -a && [ -f \"$HOME/.gemini/.env\" ] && . \"$HOME/.gemini/.env\"; [ -f \"$HOME/.config/antigravity-mcp/github-models.env\" ] && . \"$HOME/.config/antigravity-mcp/github-models.env\"; set +a && exec /home/YOUR_USERNAME/.local/bin/github-models-mcp"
+      ]
+    },
     "gitlab-com": {
       "command": "sh",
       "args": [
@@ -968,18 +1135,18 @@ GitHub Copilot operates in VS Code via official marketplace extensions. Configur
         "set -a && [ -f \"$HOME/.config/antigravity-mcp/gitlab-com.env\" ] && . \"$HOME/.config/antigravity-mcp/gitlab-com.env\"; set +a && exec npx -y mcp-remote https://gitlab.com/api/v4/mcp --header \"Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN\" --header \"X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security\" --header \"X-Gitlab-Mcp-Server-Tool-Name-Prefix:glcom_\""
       ]
     },
-    "gitlab-modern": {
+    "gitlab-lip": {
       "command": "sh",
       "args": [
         "-c",
-        "set -a && [ -f \"$HOME/.config/antigravity-mcp/gitlab-modern.env\" ] && . \"$HOME/.config/antigravity-mcp/gitlab-modern.env\"; set +a && exec npx -y mcp-remote https://gitlab.modern.example.org/api/v4/mcp --header \"Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN\" --header \"X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security\" --header \"X-Gitlab-Mcp-Server-Tool-Name-Prefix:glmod_\""
+        "set -a && [ -f \"$HOME/.config/antigravity-mcp/gitlab-lip.env\" ] && . \"$HOME/.config/antigravity-mcp/gitlab-lip.env\"; set +a && exec npx -y mcp-remote https://gitlab.lip.pt/api/v4/mcp --header \"Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN\" --header \"X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security\" --header \"X-Gitlab-Mcp-Server-Tool-Name-Prefix:gllip_\""
       ]
     },
-    "gitlab-admin-modern": {
+    "gitlab-admin-lip": {
       "command": "sh",
       "args": [
         "-c",
-        "set -a && [ -f \"$HOME/.config/antigravity-mcp/gitlab-admin-modern.env\" ] && . \"$HOME/.config/antigravity-mcp/gitlab-admin-modern.env\"; set +a && exec npx -y mcp-remote https://gitlab-admin.modern.example.org/api/v4/mcp --header \"Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN\" --header \"X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security\" --header \"X-Gitlab-Mcp-Server-Tool-Name-Prefix:gladminmod_\""
+        "set -a && [ -f \"$HOME/.config/antigravity-mcp/gitlab-admin-lip.env\" ] && . \"$HOME/.config/antigravity-mcp/gitlab-admin-lip.env\"; set +a && exec npx -y mcp-remote https://gitlab-admin.lip.pt/api/v4/mcp --header \"Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN\" --header \"X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security\" --header \"X-Gitlab-Mcp-Server-Tool-Name-Prefix:gladminlip_\""
       ]
     },
     "gitlab-legacy": {
@@ -1071,35 +1238,35 @@ mcpServers:
     command: /home/YOUR_USERNAME/.local/bin/github-models-mcp
     args: []
 
-  # 8. GitLab.com (SaaS, GitLab 19.5+) via Native Remote MCP
+  # 8. GitLab.com (SaaS, GitLab 19.5+) via Native Remote MCP + Bearer PAT
   - name: gitlab-com
     command: sh
     args:
       - -c
-      - set -a && [ -f "$HOME/.config/antigravity-mcp/gitlab-com.env" ] && . "$HOME/.config/antigravity-mcp/gitlab-com.env"; set +a && exec npx -y mcp-remote https://gitlab.com/api/v4/mcp --header "Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN" --header "X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security" --header "X-Gitlab-Mcp-Server-Tool-Name-Prefix:glcom_"
+      - set -a && [ -f "$HOME/.config/antigravity-mcp/gitlab-com.env" ] && . "$HOME/.config/antigravity-mcp/gitlab-com.env"; set +a && exec npx -y mcp-remote https://gitlab.com/api/v4/mcp --header "Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN" --header X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security --header X-Gitlab-Mcp-Server-Tool-Name-Prefix:glcom_
 
-  # 9. GitLab Modern (Self-Hosted Production, GitLab 19.5+) via Native Remote MCP
-  - name: gitlab-modern
+  # 9. GitLab LIP (Self-Hosted Production, GitLab 19.5.3) via Native Remote MCP
+  - name: gitlab-lip
     command: sh
     args:
       - -c
-      - set -a && [ -f "$HOME/.config/antigravity-mcp/gitlab-modern.env" ] && . "$HOME/.config/antigravity-mcp/gitlab-modern.env"; set +a && exec npx -y mcp-remote https://gitlab.modern.example.org/api/v4/mcp --header "Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN" --header "X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security" --header "X-Gitlab-Mcp-Server-Tool-Name-Prefix:glmod_"
+      - set -a && [ -f "$HOME/.config/antigravity-mcp/gitlab-lip.env" ] && . "$HOME/.config/antigravity-mcp/gitlab-lip.env"; set +a && exec npx -y mcp-remote https://gitlab.lip.pt/api/v4/mcp --header "Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN" --header X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security --header X-Gitlab-Mcp-Server-Tool-Name-Prefix:gllip_
 
-  # 10. GitLab Admin Modern (Self-Hosted Admin, GitLab 19.5+) via Native Remote MCP
-  - name: gitlab-admin-modern
+  # 10. GitLab Admin LIP (Self-Hosted Admin, GitLab 19.5.3) via Native Remote MCP
+  - name: gitlab-admin-lip
     command: sh
     args:
       - -c
-      - set -a && [ -f "$HOME/.config/antigravity-mcp/gitlab-admin-modern.env" ] && . "$HOME/.config/antigravity-mcp/gitlab-admin-modern.env"; set +a && exec npx -y mcp-remote https://gitlab-admin.modern.example.org/api/v4/mcp --header "Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN" --header "X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security" --header "X-Gitlab-Mcp-Server-Tool-Name-Prefix:gladminmod_" 
+      - set -a && [ -f "$HOME/.config/antigravity-mcp/gitlab-admin-lip.env" ] && . "$HOME/.config/antigravity-mcp/gitlab-admin-lip.env"; set +a && exec npx -y mcp-remote https://gitlab-admin.lip.pt/api/v4/mcp --header "Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN" --header X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security --header X-Gitlab-Mcp-Server-Tool-Name-Prefix:gladminlip_
 
-  # 10. GitLab Legacy (Self-Hosted Legacy, GitLab 18.2.8) via @zereight/mcp-gitlab + .env
+  # 11. GitLab Legacy (Self-Hosted Legacy, GitLab 18.2.8) via @zereight/mcp-gitlab + .env
   - name: gitlab-legacy
     command: sh
     args:
       - -c
       - set -a && . "$HOME/.config/antigravity-mcp/gitlab-legacy.env" && set +a && exec npx -y @zereight/mcp-gitlab
 
-  # 11. GitLab Admin Legacy (Self-Hosted Legacy Admin, GitLab 16.x) via @zereight/mcp-gitlab + .env
+  # 12. GitLab Admin Legacy (Self-Hosted Legacy Admin, GitLab 16.x) via @zereight/mcp-gitlab + .env
   - name: gitlab-admin-legacy
     command: sh
     args:
@@ -1111,13 +1278,12 @@ Because `GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_PERSONAL_ACCESS_TOKEN}"` dynami
 
 ---
 
-### Step 7.3: Strategy to Optimize Token Costs: Local Two-Stage RAG (Continue) and Frontier Orchestration (Antigravity)
+### Step 7.3: Strategy to Optimize Token Costs via Local RAG and Chat Mode
 
-Running small local models (3B to 7B parameters) directly as multi-agent MCP orchestrators across 12 servers is inefficient because tool schemas inject **15,000 to 30,000+ tokens of raw JSON definitions** into every single request, saturating local GPU VRAM.
+To maintain high development velocity across resource-constrained hardware (e.g. laptop with AMD Ryzen 7 5800H, 16GB RAM, and NVIDIA GTX 1650 4GB VRAM) while orchestrating across 12 MCP backends, local execution must be decoupled from frontier cloud orchestration:
 
-The optimal workflow decouples local data preparation from frontier cloud orchestration:
 1. **Stage 1: Zero-Cost Local Pre-Processing (VS Code Continue + Ollama + CPU Reranker)**: Local hardware indexes, extracts, and pre-compresses raw files into dense Markdown architectural digests without spending a single cloud API token.
-2. **Stage 2: High-Context Frontier Orchestration (VS Code Antigravity + Google AI Pro / Model Garden)**: Antigravity's 1M+ token context window ingests the clean local digest and orchestrates specialized MCP subagents (`claude-fable-gcp`, `gemini-carbon-gcp`, `openai-codex-plus`, `github-models`) to generate migration plans, audit infrastructure, and generate code.
+2. **Stage 2: High-Context Frontier Orchestration (VS Code Antigravity + Google AI Pro / Model Garden)**: Antigravity's 1M+ token context window ingests the clean local digest and orchestrates specialized MCP subagents (`claude-fable-gcp`, `gemini-carbon-gcp`, `openai-codex-plus`, `github-models`) to generate migration plans, audit infrastructure, and produce production code.
 
 #### 1. Hardware Allocation Strategy (Laptop vs. Office Desktop)
 
@@ -1130,7 +1296,7 @@ The optimal workflow decouples local data preparation from frontier cloud orches
 #### 2. Local Two-Stage RAG Indexing & `.continueignore` Setup
 
 To index all project code locally without memory exhaustion or index pollution:
-1. **Parallel CPU Embedding Engine (`ollama-embed-cpu`)**: Run the dedicated CPU Ollama service on port 11435 (`NVIDIA_VISIBLE_DEVICES=none`). This allows Continue's indexer to embed files across all 16 Ryzen CPU threads in system RAM while your GPU coding model stays permanently loaded in VRAM on port 11434.
+1. **Parallel CPU Embedding Engine (`ollama-embed-cpu`)**: Run the dedicated CPU Ollama service on port 11435 (`NVIDIA_VISIBLE_DEVICES=none`). This allows Continue's `@codebase` indexer to embed files across all 16 Ryzen CPU threads in system RAM while your GPU coding model stays permanently loaded in VRAM on port 11434.
 2. **Embedded Vector Database (LanceDB)**: Continue stores vectors locally in `~/.continue/index/` using embedded LanceDB and SQLite metadata caches, requiring zero standalone vector database daemons.
 3. **Workspace Filtering via `.continueignore`**: Exclude static assets, build outputs, and lockfiles by placing `.continueignore` in the repository root:
    ```text
@@ -1150,27 +1316,932 @@ To index all project code locally without memory exhaustion or index pollution:
    *.json
    !package.json
    !composer.json
+   migration-prep/
    ```
 
-#### 3. Operational Rules for Local Chat Mode (Avoid Agent/Plan Mode)
+#### 3. Mandatory Chat Mode (Avoid Agent & Plan Modes on Low VRAM)
 
-* **Stay in Chat Mode**: Do not use Agent or Plan mode on resource-constrained hardware. Chat mode performs single-pass, deterministic completions against the exact files you attach, dedicating 100% of your 16k context window to source code with zero schema overhead.
-* **Why `@Codebase` Fails for Full File Ingestion**: `@Codebase` performs a top-K semantic search that returns only the top 10–20 small chunks (512 tokens each) matching query keywords. It does **not** read every file in your repository. For comprehensive Phase 1 extraction, attach exact files directly using `@File` (or select 3–5 files in the VS Code Explorer and click **Continue → Add to Chat**).
+When working with local 3B to 7B models in Continue:
+* **Zero Schema Overhead**: Agent and Plan modes inject internal file-editing, terminal, and search tool schemas (**4,000 to 6,000 tokens of JSON bloat**) into every single model turn and enforce rigid JSON tool-calling loops. On a 3B model (`qwen2.5-coder:3b`), tool calls frequently stall, emit malformed syntax, or enter infinite retries.
+* **Deterministic Single-Pass Execution**: **Chat mode** performs single-pass completions directly against the exact files you attach, dedicating 100% of the 16k context window to source code.
 
-#### 4. The 3-Phase Migration Pipeline
+#### 4. Attaching Folders Without Deprecated `@Folder`
 
-1. **Phase 1: Local File Extraction (`/digest`)**:
-   * Open Continue chat (**`Ctrl+L`**) in **Chat** mode using `Laptop-Worker-3B`.
-   * Attach 3–5 related files from one repository and run `/digest`.
-   * Copy the compact Markdown summary into `migration-prep/01-ci.md`, `migration-prep/02-verification.md`, etc.
-   * Click **`+` (New Session)** between batches to clear context.
-2. **Phase 2: Master Consolidation (`/synthesize`)**:
-   * Open a fresh Chat session (**`+`**).
-   * Attach *only* your digest files (`@File migration-prep/01-ci.md`, etc.) and run `/synthesize`.
-   * Save the consolidated output as `migration-prep/MASTER_ARCHITECTURE_SPEC.md` (< 12,000 words).
-3. **Phase 3: Frontier Multi-Agent Orchestration in Antigravity**:
-   * Open **Google Antigravity (`Ctrl+L`)** in **Agent** mode on your **Google AI Pro** (`gemini-3.1-pro`) or **Google Cloud Agent Platform** (`gemini-4-carbon`) subscription.
-   * Attach `@migration-prep/MASTER_ARCHITECTURE_SPEC.md` and execute the master orchestration prompt across `claude-fable-gcp`, `gemini-carbon-gcp`, and `openai-codex-plus`.
+In modern Continue releases, `@Folder` and `@Codebase` context provider syntax are officially deprecated in `config.yaml`. To attach entire directories cleanly:
+1. In the VS Code Explorer sidebar, **right-click the target repository folder** (or select 3–5 related files with `Ctrl+Click`).
+2. Select **Continue → Add to Chat** (or drag the folder directly into the Continue chat input box).
+3. Continue automatically expands the directory and attaches all allowed files as individual `@File` pills while strictly honoring your `.continueignore` rules.
+
+#### 5. The 3-Phase Migration Pipeline
+
+##### Phase 1: Local File Extraction (`/digest`)
+
+1. Open Continue chat (**`Ctrl+L`**), verify **Chat** mode is selected with model `Laptop-Worker-3B`.
+2. Attach 3 to 5 related files (or a folder under 12,000 tokens), type `/digest`, and press Enter.
+3. Save the dense Markdown output to thematic files in `migration-prep/` (e.g. `01-ci.md`, `02-verification.md`, `03-ansible.md`).
+4. Click **`+` (New Session)** between batches to clear the context window.
+
+##### Phase 2: Master Consolidation (`/synthesize`)
+
+1. Open a fresh Chat session (**`+`**).
+2. Attach only your digest files (`@File migration-prep/01-ci.md`, `@File migration-prep/02-verification.md`, etc.).
+3. Type `/synthesize` and press Enter.
+4. Save the consolidated output as `migration-prep/MASTER_ARCHITECTURE_SPEC.md` (< 12,000 words).
+
+##### Phase 3: Frontier Multi-Agent Orchestration in Antigravity
+
+1. Open **Google Antigravity (`Ctrl+L`)** in **Agent** mode on your **Google AI Pro** (`gemini-3.1-pro`) or **Google Cloud Agent Platform** (`gemini-4-carbon`) subscription.
+2. Attach `@migration-prep/MASTER_ARCHITECTURE_SPEC.md` and execute the master orchestration prompt:
+
+```markdown
+Read `@migration-prep/MASTER_ARCHITECTURE_SPEC.md`. You are the lead enterprise migration architect orchestrating our specialized MCP subagents to modernize this software infrastructure.
+
+Execute this 3-stage multi-agent workflow sequentially, passing only the compact outputs from each stage to the next:
+
+### Stage 1: Architectural Migration Plan (`claude-fable-gcp`)
+Call `claude-fable-gcp` (model `claude-fable-5-2`) with the contents of `@migration-prep/MASTER_ARCHITECTURE_SPEC.md` and instruct it to:
+1. Design a 3-wave phased migration plan replacing legacy Jenkins and monolithic recipes with modern containerized CI/CD (GitHub Actions or GitLab CI) and decoupled validation gates.
+2. Structure the deliverables, dependencies, and cutover milestones for each repository.
+
+### Stage 2: Infrastructure & Risk Audit (`gemini-carbon-gcp`)
+Call `gemini-carbon-gcp` (using model `gemini-4-carbon-medium`) with the Wave 1–3 plan from Stage 1 and the Infrastructure Coupling section of `@migration-prep/MASTER_ARCHITECTURE_SPEC.md`. Instruct it to:
+1. Identify single points of failure, hardcoded external endpoints, base-image incompatibilities (e.g., EL7 to Rocky/Alma 9), and credential migration risks.
+2. Specify rollback procedures and parallel validation checks to ensure zero downtime.
+
+### Stage 3: Starter CI Implementation (`openai-codex-plus` or `github-models`)
+Call `openai-codex-plus` (`ask_codex` with model `gpt-5.3-codex`) or `github-models` (`ask_github_model` with model `auto` / `claude-sonnet-5.5`) with the Wave 1 specification from Stage 1. Instruct it to:
+1. Generate clean, parameterized CI workflow templates and container build matrices for the core verification pipeline.
+2. Provide a smoke-test parity checklist comparing legacy outputs with the new pipeline.
+
+### Final Output
+Synthesize all subagent deliverables into a clean, publication-ready `MIGRATION_ROADMAP.md` in my workspace root.
+```
+
+
+---
+
+### Step 7.4: Automated Multi-IDE Ignore & Context Synchronization (`genignore.py`, `update-ai-ignore.sh`, and `pre-commit`)
+
+#### 1. Why Multi-Provider Ignore Synchronization is Critical
+
+When orchestrating across multiple agentic tools (Continue, Antigravity, Claude Code, GitHub Copilot, and OpenAI Codex), each tool employs its own mechanism for excluding files from codebase discovery, vector indexing, and tool execution. If rules fall out of sync:
+* **Token Bleed**: Background indexers attempt to chunk massive minified JavaScript bundles, binary archives, and database dumps into local or cloud context windows.
+* **Secret Leakage**: Sensitive credentials (`.env`, `.env.*`, keys, certs) risk being injected into agent prompts or context snippets.
+* **Context Thrashing**: Large language models receive irrelevant test fixtures, lockfiles, and compiler outputs instead of high-signal source code.
+
+#### 2. Multi-Provider Ignore Architecture
+
+Rather than treating instructional Markdown files as exclusion filters, this automated toolchain configures each provider's native exclusion engine:
+
+| Provider | Target Files | Mechanism & Rules Applied |
+| :--- | :--- | :--- |
+| **Continue** | `.continueignore` | **Native Ignore Rules**: Standard glob exclusion syntax (`.git/`, `.venv/`, `node_modules/`, `dist/`, build artifacts). |
+| **Antigravity** | `.agentignore` | **Native Ignore Rules**: Standard glob exclusion syntax preventing file discovery and context ingestion. |
+| **Claude Code** | `.claude/settings.json`<br>`CLAUDE.md` | **Enforced Permissions**: Deep-merges `permissions.deny` with `Read(...)` rules into `.claude/settings.json`; provides baseline project conventions in `CLAUDE.md`. |
+| **GitHub Copilot** | `.vscode/settings.json`<br>`.github/copilot-instructions.md` | **Workspace Exclusions**: Deep-merges `files.exclude` and `search.exclude` dictionaries into `.vscode/settings.json`; adds developer guidelines in `.github/copilot-instructions.md`. |
+| **OpenAI Codex** | `AGENTS.md` | **Instruction Guidance**: Structured `AGENTS.md` instructions with a dedicated `## Files to exclude from analysis` section (alongside `.gitignore` fallback). |
+
+#### 3. Component Scripts and Automation Architecture
+
+##### A. The Generator: `genignore.py`
+
+The core Python script (`genignore.py`) parses your project `.gitignore` and `.gitattributes` (including `filter=git-crypt` filters), merges baseline exclusions, and writes or deep-merges native configurations for all providers without destroying existing IDE settings:
+
+```python
+#!/usr/bin/env python3
+"""
+genignore.py - Multi-Provider AI Ignore & Instruction File Generator
+
+Generates, updates, and merges native ignore rules and configurations across:
+  - Continue (.continueignore)
+  - Antigravity (.agentignore)
+  - Claude Code (.claude/settings.json permissions.deny + CLAUDE.md)
+  - GitHub Copilot (.vscode/settings.json files/search.exclude + copilot-instructions.md)
+  - OpenAI Codex (AGENTS.md)
+
+Also preserves git-based ignore gathering and file-packing capabilities.
+"""
+
+import argparse
+import fnmatch
+import glob
+import json
+import os
+import pathlib
+import sys
+
+# Base templates and instruction defaults
+BASE_IGNORE_PATTERNS = [
+    ".git/",
+    ".venv/",
+    "venv/",
+    "node_modules/",
+    "dist/",
+    "build/",
+    "__pycache__/",
+    "*.pyc",
+    ".env",
+    ".env.*",
+]
+
+CLAUDE_MD_DEFAULT = """\
+# Claude Code Instructions
+## Project guidelines
+- Follow existing coding conventions and architecture.
+- Keep changes focused, minimal, and test-driven.
+- Avoid unnecessary dependencies and unrelated modifications.
+"""
+
+COPILOT_INSTRUCTIONS_DEFAULT = """\
+# GitHub Copilot Instructions
+## Project guidelines
+- Follow the existing project architecture and coding conventions.
+- Keep changes focused, minimal, and idiomatic.
+- Add or update tests when changing functionality.
+- Avoid modifying unrelated files.
+"""
+
+CODEX_AGENTS_DEFAULT = """\
+# Codex Instructions
+## Project guidelines
+- Keep changes focused and minimal.
+- Run relevant tests after making changes.
+- Avoid modifying unrelated files.
+"""
+
+
+def parse_gitignore(gitignore_path=".gitignore"):
+    """Parse .gitignore excluding comments and blank lines."""
+    patterns = []
+    if os.path.exists(gitignore_path):
+        with open(gitignore_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    patterns.append(line)
+    return patterns
+
+
+def parse_gitattributes(gitattributes_path=".gitattributes"):
+    """Extract filter= and filter=git-crypt protected patterns from .gitattributes."""
+    crypt_patterns = []
+    if os.path.exists(gitattributes_path):
+        with open(gitattributes_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "filter=" in line:
+                    parts = line.split()
+                    if parts:
+                        crypt_patterns.append(parts[0])
+    return crypt_patterns
+
+
+def gather_ignore_patterns(use_gitignore=True, use_gitattributes=True):
+    """Merge ignore rules preserving insertion order and deduplicating."""
+    patterns = []
+    if use_gitignore:
+        patterns.extend(parse_gitignore())
+    if use_gitattributes:
+        patterns.extend(parse_gitattributes())
+    return list(dict.fromkeys(patterns))
+
+
+def matches_any(path_str, patterns):
+    """Check if a path matches any pattern or directory prefix."""
+    for pat in patterns:
+        if fnmatch.fnmatch(path_str, pat) or fnmatch.fnmatch(os.path.basename(path_str), pat):
+            return True
+        if pat.endswith("/") and path_str.startswith(pat.rstrip("/")):
+            return True
+    return False
+
+
+def gather_files(input_patterns, use_gitignore, use_gitattributes, root_dir="."):
+    """Gather files matching glob patterns or repository walk, filtered by ignore rules."""
+    gitignore_pats = parse_gitignore() if use_gitignore else []
+    gitattr_pats = parse_gitattributes() if use_gitattributes else []
+    collected_files = []
+
+    if not input_patterns:
+        for dirpath, _, filenames in os.walk(root_dir):
+            if ".git" in dirpath.split(os.sep):
+                continue
+            for filename in filenames:
+                full_path = os.path.join(dirpath, filename)
+                rel_path = os.path.relpath(full_path, root_dir)
+                if use_gitignore and matches_any(rel_path, gitignore_pats):
+                    continue
+                collected_files.append(rel_path)
+        if use_gitattributes:
+            for dirpath, _, filenames in os.walk(root_dir):
+                if ".git" in dirpath.split(os.sep):
+                    continue
+                for filename in filenames:
+                    full_path = os.path.join(dirpath, filename)
+                    rel_path = os.path.relpath(full_path, root_dir)
+                    if matches_any(rel_path, gitattr_pats) and rel_path not in collected_files:
+                        collected_files.append(rel_path)
+    else:
+        for pat in input_patterns:
+            matched = glob.glob(pat, recursive=True)
+            for m in matched:
+                if os.path.isfile(m):
+                    rel_path = os.path.relpath(m, root_dir)
+                    if rel_path not in collected_files:
+                        collected_files.append(rel_path)
+
+    return sorted(set(collected_files))
+
+
+def deep_merge(base, update):
+    """Recursively merge dicts and deduplicate list elements."""
+    if not isinstance(base, dict) or not isinstance(update, dict):
+        return update
+    merged = dict(base)
+    for key, value in update.items():
+        if key in merged:
+            if isinstance(merged[key], dict) and isinstance(value, dict):
+                merged[key] = deep_merge(merged[key], value)
+            elif isinstance(merged[key], list) and isinstance(value, list):
+                # Preserve unique list elements in order
+                merged[key] = list(dict.fromkeys(merged[key] + value))
+            else:
+                merged[key] = value
+        else:
+            merged[key] = value
+    return merged
+
+
+def write_json_file(filepath: pathlib.Path, additions: dict, overwrite: bool = False):
+    """
+    Create or merge a JSON configuration file.
+    Evaluates existence before writing to guarantee accurate status reporting.
+    """
+    existed = filepath.exists()
+    if overwrite or not existed:
+        data = additions
+    else:
+        try:
+            with filepath.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, OSError) as e:
+            raise ValueError(
+                f"Cannot merge {filepath}: {e}. Fix the JSON file or run with --overwrite."
+            )
+        if not isinstance(data, dict):
+            raise ValueError(
+                f"Cannot merge {filepath}: root JSON structure must be an object."
+            )
+        data = deep_merge(data, additions)
+
+    new_content = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+
+    if existed and not overwrite:
+        existing_content = filepath.read_text(encoding="utf-8")
+        if existing_content == new_content:
+            print(f"[SKIP]      {filepath} (configuration already up-to-date)")
+            return
+
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    filepath.write_text(new_content, encoding="utf-8")
+
+    if overwrite and existed:
+        print(f"[OVERWRITE] {filepath}")
+    elif existed:
+        print(f"[UPDATE]    {filepath}")
+    else:
+        print(f"[CREATE]    {filepath}")
+
+
+def write_text_file(filepath: pathlib.Path, default_content: str, extra_lines=None,
+                    header=None, overwrite=False, append=False):
+    """Write, append, or skip plain text/markdown instruction and ignore files."""
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    extra_lines = list(dict.fromkeys(extra_lines or []))
+
+    additions = ""
+    if extra_lines:
+        prefix = f"\n{header}\n" if header else "\n"
+        additions = prefix + "\n".join(extra_lines) + "\n"
+
+    full_payload = default_content
+    if additions:
+        if not full_payload.endswith("\n"):
+            full_payload += "\n"
+        full_payload += additions.lstrip("\n")
+
+    if not filepath.exists():
+        filepath.write_text(full_payload, encoding="utf-8")
+        print(f"[CREATE]    {filepath}")
+        return
+
+    if overwrite:
+        filepath.write_text(full_payload, encoding="utf-8")
+        print(f"[OVERWRITE] {filepath}")
+        return
+
+    if not append:
+        print(f"[SKIP]      {filepath} (already exists)")
+        return
+
+    existing = filepath.read_text(encoding="utf-8")
+    existing_lines = set(existing.splitlines())
+
+    missing = [line for line in (extra_lines or []) if line not in existing_lines]
+    needs_default = default_content.strip() not in existing
+
+    if not missing and not needs_default:
+        print(f"[SKIP]      {filepath} (already contains specified entries)")
+        return
+
+    with filepath.open("a", encoding="utf-8") as f:
+        if existing and not existing.endswith("\n"):
+            f.write("\n")
+        if needs_default:
+            f.write("\n" + default_content.strip() + "\n")
+        if missing:
+            if header and header not in existing:
+                f.write(f"\n{header}\n")
+            for line in missing:
+                f.write(line + "\n")
+
+    print(f"[APPEND]    {filepath}")
+
+
+def format_claude_deny_rules(patterns):
+    """Format patterns into Claude Code permissions.deny Read(...) rules."""
+    rules = []
+    for p in patterns:
+        p_clean = p.strip()
+        if not p_clean:
+            continue
+        if p_clean.startswith("*"):
+            rules.append(f"Read(**/{p_clean})")
+        elif "/" not in p_clean and not p_clean.startswith("**/"):
+            rules.append(f"Read({p_clean})")
+        else:
+            rules.append(f"Read({p_clean})")
+    return list(dict.fromkeys(rules))
+
+
+def format_vscode_exclude_dict(patterns):
+    """Format glob patterns into VS Code boolean exclude dictionaries."""
+    result = {}
+    for p in patterns:
+        p_clean = p.strip()
+        if not p_clean:
+            continue
+        if p_clean.startswith("*"):
+            key = f"**/{p_clean}"
+        elif "/" not in p_clean and not p_clean.startswith("**/"):
+            key = p_clean
+        else:
+            key = p_clean
+        result[key] = True
+    return result
+
+
+def generate_provider_configs(providers, append=False, overwrite=False, extra_patterns=None, root_dir="."):
+    """Generate or update configurations tailored to each provider's native system."""
+    root = pathlib.Path(root_dir)
+    extra_patterns = list(dict.fromkeys(extra_patterns or []))
+
+    # Compile the effective pattern list (baseline defaults + CLI patterns)
+    all_patterns = list(dict.fromkeys(BASE_IGNORE_PATTERNS + extra_patterns))
+
+    for provider in providers:
+        if provider == "continue":
+            default_txt = "# Continue ignore rules\n" + "\n".join(BASE_IGNORE_PATTERNS) + "\n"
+            write_text_file(
+                root / ".continueignore",
+                default_content=default_txt,
+                extra_lines=extra_patterns,
+                header="# Additional ignore patterns",
+                overwrite=overwrite,
+                append=append,
+            )
+
+        elif provider == "antigravity":
+            default_txt = "# Antigravity ignore rules\n" + "\n".join(BASE_IGNORE_PATTERNS) + "\n"
+            write_text_file(
+                root / ".agentignore",
+                default_content=default_txt,
+                extra_lines=extra_patterns,
+                header="# Additional ignore patterns",
+                overwrite=overwrite,
+                append=append,
+            )
+
+        elif provider == "claude":
+            # 1. Native security & search enforcement via .claude/settings.json
+            deny_rules = format_claude_deny_rules(all_patterns)
+            settings_payload = {
+                "permissions": {
+                    "deny": deny_rules
+                }
+            }
+            write_json_file(root / ".claude" / "settings.json", settings_payload, overwrite=overwrite)
+
+            # 2. General workspace guidance via CLAUDE.md
+            write_text_file(
+                root / "CLAUDE.md",
+                default_content=CLAUDE_MD_DEFAULT,
+                extra_lines=None,
+                overwrite=overwrite,
+                append=append,
+            )
+
+        elif provider == "copilot":
+            # 1. Native editor and text search exclusions via .vscode/settings.json
+            exclude_dict = format_vscode_exclude_dict(all_patterns)
+            vscode_payload = {
+                "files.exclude": exclude_dict,
+                "search.exclude": exclude_dict,
+            }
+            write_json_file(root / ".vscode" / "settings.json", vscode_payload, overwrite=overwrite)
+
+            # 2. Copilot chat and code guidance via .github/copilot-instructions.md
+            write_text_file(
+                root / ".github" / "copilot-instructions.md",
+                default_content=COPILOT_INSTRUCTIONS_DEFAULT,
+                extra_lines=None,
+                overwrite=overwrite,
+                append=append,
+            )
+
+        elif provider == "codex":
+            # Instructional exclusion guidance in AGENTS.md
+            exclude_lines = [f"- {p}" for p in all_patterns]
+            codex_content = CODEX_AGENTS_DEFAULT.strip() + "\n\n## Files to exclude from analysis\n"
+            codex_content += "Do not read, inspect, analyze, or modify:\n"
+            codex_content += "\n".join(exclude_lines) + "\n\n"
+            codex_content += "Do not include these files in context unless explicitly requested.\n"
+
+            write_text_file(
+                root / "AGENTS.md",
+                default_content=codex_content,
+                extra_lines=None,
+                overwrite=overwrite,
+                append=append,
+            )
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Merge project ignore rules, pack codebase contexts, or generate AI provider exclusion files."
+    )
+    parser.add_argument(
+        "patterns",
+        nargs="*",
+        help="Positional patterns. Used as glob patterns for packing, or as extra exclusion patterns when paired with --generate-ignore.",
+    )
+    parser.add_argument(
+        "-o", "--output",
+        help="Output destination path. Defaults to stdout.",
+    )
+    parser.add_argument(
+        "--no-gitignore",
+        action="store_true",
+        help="Exclude .gitignore patterns from rule resolution.",
+    )
+    parser.add_argument(
+        "--no-gitattributes",
+        action="store_true",
+        help="Exclude .gitattributes filter/crypt patterns from rule resolution.",
+    )
+
+    # Provider generation options
+    parser.add_argument(
+        "--generate-ignore",
+        action="store_true",
+        help="Generate or update AI provider exclusion files and settings.",
+    )
+    parser.add_argument(
+        "--provider",
+        nargs="+",
+        choices=["continue", "antigravity", "claude", "copilot", "codex", "all"],
+        default=["all"],
+        help="Target providers to generate (default: all).",
+    )
+
+    # Mutually exclusive write modes
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument(
+        "-a", "--append",
+        action="store_true",
+        help="Append missing predefined content and additional patterns without duplicating.",
+    )
+    mode_group.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Overwrite existing provider files instead of merging/skipping.",
+    )
+
+    args = parser.parse_args()
+
+    # 1. Provider ignore & settings generation
+    if args.generate_ignore:
+        selected_providers = args.provider
+        if "all" in selected_providers:
+            selected_providers = ["continue", "antigravity", "claude", "copilot", "codex"]
+
+        generate_provider_configs(
+            providers=list(dict.fromkeys(selected_providers)),
+            append=args.append,
+            overwrite=args.overwrite,
+            extra_patterns=args.patterns,
+        )
+        return
+
+    # 2. File packing mode (when explicit positional file patterns are passed)
+    if args.patterns:
+        files = gather_files(
+            args.patterns,
+            use_gitignore=not args.no_gitignore,
+            use_gitattributes=not args.no_gitattributes,
+        )
+        output_mode = "a" if args.append else "w"
+        out_file = open(args.output, output_mode, encoding="utf-8") if args.output else sys.stdout
+        try:
+            for fpath in files:
+                out_file.write(f"===FILE: {fpath}===\n")
+                try:
+                    with open(fpath, "r", encoding="utf-8", errors="ignore") as rf:
+                        out_file.write(rf.read())
+                except Exception as e:
+                    out_file.write(f"[Error reading file: {e}]\n")
+                out_file.write("\n\n")
+        finally:
+            if args.output:
+                out_file.close()
+        return
+
+    # 3. Default mode: Output merged .gitignore and .gitattributes rules to stdout
+    patterns = gather_ignore_patterns(
+        use_gitignore=not args.no_gitignore,
+        use_gitattributes=not args.no_gitattributes,
+    )
+    output_mode = "a" if args.append else "w"
+    out_file = open(args.output, output_mode, encoding="utf-8") if args.output else sys.stdout
+    try:
+        for pattern in patterns:
+            out_file.write(pattern + "\n")
+    finally:
+        if args.output:
+            out_file.close()
+
+
+if __name__ == "__main__":
+    main()
+```
+
+##### B. The Shell Wrapper: `update-ai-ignore.sh`
+
+The standalone shell wrapper (`update-ai-ignore.sh`) automates execution by checking if `.gitignore` or `.gitattributes` have uncommitted changes before invoking `genignore.py`, with an optional `--stage` flag to automatically run `git add` on updated files:
+
+```bash
+#!/usr/bin/env bash
+# ==============================================================================
+# update-ai-ignore.sh - Shell Wrapper for Multi-Provider AI Ignore Generation
+# ==============================================================================
+# Synchronizes AI provider ignore and instruction files using genignore.py.
+# Supports manual execution, automated cron, or invocation via Git hooks.
+# ==============================================================================
+
+set -euo pipefail
+
+# 1. Resolve project root directory
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    PROJECT_ROOT="$(git rev-parse --show-toplevel)"
+else
+    PROJECT_ROOT="$(pwd)"
+fi
+
+cd "$PROJECT_ROOT"
+
+# 2. Locate genignore.py executable or script
+GENIGNORE_PATH=""
+CANDIDATE_PATHS=(
+    "$PROJECT_ROOT/genignore.py"
+    "$PROJECT_ROOT/scripts/genignore.py"
+    "$PROJECT_ROOT/.config/genignore.py"
+    "$(which genignore.py 2>/dev/null || true)"
+)
+
+for candidate in "${CANDIDATE_PATHS[@]}"; do
+    if [[ -n "$candidate" && -f "$candidate" ]]; then
+        GENIGNORE_PATH="$candidate"
+        break
+    fi
+done
+
+if [[ -z "$GENIGNORE_PATH" ]]; then
+    echo "[!] Error: genignore.py not found in project root, scripts/, or system PATH." >&2
+    echo "    Please place genignore.py in '$PROJECT_ROOT/' or make it executable in PATH." >&2
+    exit 1
+fi
+
+# Ensure Python 3 interpreter is available
+PYTHON_BIN="$(which python3 2>/dev/null || which python 2>/dev/null || true)"
+if [[ -z "$PYTHON_BIN" ]]; then
+    echo "[!] Error: python3 interpreter not found." >&2
+    exit 1
+fi
+
+# 3. Parse options and extra patterns
+STAGE_FILES=false
+FORCE_RUN=false
+EXTRA_ARGS=()
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --stage|-s)
+            STAGE_FILES=true
+            shift
+            ;;
+        --force|-f)
+            FORCE_RUN=true
+            shift
+            ;;
+        --help|-h)
+            echo "Usage: $(basename "$0") [--stage|-s] [--force|-f] [EXTRA_PATTERNS...]"
+            echo ""
+            echo "Options:"
+            echo "  --stage, -s    Automatically 'git add' generated/updated provider files."
+            echo "  --force, -f    Run genignore.py regardless of whether .gitignore or .gitattributes changed."
+            echo "  --help, -h     Show this help message."
+            exit 0
+            ;;
+        *)
+            EXTRA_ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+
+# 4. Check if .gitignore or .gitattributes have uncommitted changes
+CHANGED=false
+
+if [[ "$FORCE_RUN" == true ]]; then
+    CHANGED=true
+elif git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    # Check both staged and unstaged changes for .gitignore or .gitattributes
+    if git diff --name-only HEAD 2>/dev/null | grep -qE '^(\.gitignore|\.gitattributes)$' || \
+       git status --porcelain 2>/dev/null | grep -qE '(^\?\?|^.[MD]|^[MD].)[[:space:]]+(\.gitignore|\.gitattributes)'; then
+        CHANGED=true
+    fi
+else
+    # If not a git repository, run by default
+    CHANGED=true
+fi
+
+if [[ "$CHANGED" == false ]]; then
+    echo "[*] Neither .gitignore nor .gitattributes have changed. Nothing to do."
+    exit 0
+fi
+
+echo "[*] Synchronizing AI provider ignore files using genignore.py..."
+
+# 5. Execute genignore.py with --generate-ignore --append and any extra patterns
+if [[ ${#EXTRA_ARGS[@]} -gt 0 ]]; then
+    "$PYTHON_BIN" "$GENIGNORE_PATH" --generate-ignore --append "${EXTRA_ARGS[@]}"
+else
+    "$PYTHON_BIN" "$GENIGNORE_PATH" --generate-ignore --append
+fi
+
+# 6. Auto-stage files if requested and in a Git repository
+if [[ "$STAGE_FILES" == true ]] && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    PROVIDER_FILES=(
+        ".continueignore"
+        ".agentignore"
+        ".claude/settings.json"
+        "CLAUDE.md"
+        ".vscode/settings.json"
+        ".github/copilot-instructions.md"
+        "AGENTS.md"
+    )
+
+    FILES_TO_STAGE=()
+    for f in "${PROVIDER_FILES[@]}"; do
+        if [[ -f "$PROJECT_ROOT/$f" ]]; then
+            FILES_TO_STAGE+=("$f")
+        fi
+    done
+
+    if [[ ${#FILES_TO_STAGE[@]} -gt 0 ]]; then
+        git add "${FILES_TO_STAGE[@]}"
+        echo "[*] Automatically staged updated AI provider files: ${FILES_TO_STAGE[*]}"
+    fi
+fi
+
+echo "[✓] AI ignore and instruction files successfully synchronized."
+```
+
+##### C. The Git Pre-Commit Hook: `pre-commit`
+
+The pre-commit hook (`.git/hooks/pre-commit`) inspects staged files in your Git index. If `.gitignore` or `.gitattributes` are modified, it triggers `genignore.py --generate-ignore --append` and automatically re-stages all resulting provider files so rules and configurations are committed atomically:
+
+```bash
+#!/usr/bin/env bash
+# ==============================================================================
+# Git Pre-Commit Hook: Auto-Sync AI Provider Ignore Files
+# ==============================================================================
+# Install to: .git/hooks/pre-commit (make executable with chmod +x)
+#
+# Inspects staged files before every commit. If .gitignore or .gitattributes
+# are modified in the index, it automatically runs genignore.py --generate-ignore --append
+# and re-stages the synchronized AI provider ignore and instruction files.
+# ==============================================================================
+
+set -euo pipefail
+
+# 1. Verify we are in a Git working tree
+if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    exit 0
+fi
+
+PROJECT_ROOT="$(git rev-parse --show-toplevel)"
+cd "$PROJECT_ROOT"
+
+# 2. Check if .gitignore or .gitattributes are staged in this commit
+STAGED_RULES="$(git diff --cached --name-only | grep -E '^(\.gitignore|\.gitattributes)$' || true)"
+
+if [[ -z "$STAGED_RULES" ]]; then
+    # Neither file is being modified in this commit; exit cleanly
+    exit 0
+fi
+
+echo "[pre-commit] Staged changes detected in: ${STAGED_RULES//$'\n'/, }"
+echo "[pre-commit] Synchronizing AI provider ignore files via genignore.py..."
+
+# 3. Locate genignore.py or wrapper script
+GENIGNORE_BIN=""
+WRAPPER_SCRIPT="$PROJECT_ROOT/update-ai-ignore.sh"
+
+if [[ -f "$WRAPPER_SCRIPT" && -x "$WRAPPER_SCRIPT" ]]; then
+    # Execute the wrapper with --stage and --force to ensure auto-staging
+    "$WRAPPER_SCRIPT" --stage --force
+    exit 0
+fi
+
+# Fallback to direct genignore.py invocation
+CANDIDATE_PATHS=(
+    "$PROJECT_ROOT/genignore.py"
+    "$PROJECT_ROOT/scripts/genignore.py"
+    "$PROJECT_ROOT/.config/genignore.py"
+    "$(which genignore.py 2>/dev/null || true)"
+)
+
+for candidate in "${CANDIDATE_PATHS[@]}"; do
+    if [[ -n "$candidate" && -f "$candidate" ]]; then
+        GENIGNORE_BIN="$candidate"
+        break
+    fi
+done
+
+if [[ -z "$GENIGNORE_BIN" ]]; then
+    echo "[pre-commit] Warning: genignore.py not found. Skipping AI ignore synchronization." >&2
+    exit 0
+fi
+
+PYTHON_BIN="$(which python3 2>/dev/null || which python 2>/dev/null || true)"
+if [[ -z "$PYTHON_BIN" ]]; then
+    echo "[pre-commit] Warning: python3 not found. Skipping AI ignore synchronization." >&2
+    exit 0
+fi
+
+# 4. Execute genignore.py to append/merge missing patterns
+"$PYTHON_BIN" "$GENIGNORE_BIN" --generate-ignore --append
+
+# 5. Automatically stage generated or updated provider files
+PROVIDER_FILES=(
+    ".continueignore"
+    ".agentignore"
+    ".claude/settings.json"
+    "CLAUDE.md"
+    ".vscode/settings.json"
+    ".github/copilot-instructions.md"
+    "AGENTS.md"
+)
+
+STAGED_COUNT=0
+for target in "${PROVIDER_FILES[@]}"; do
+    if [[ -f "$PROJECT_ROOT/$target" ]]; then
+        git add "$PROJECT_ROOT/$target"
+        ((STAGED_COUNT++)) || true
+    fi
+done
+
+echo "[pre-commit] Re-staged updated AI provider files into the current commit."
+exit 0
+```
+
+#### 4. Installation and Setup Instructions
+
+##### Step 1: Install Scripts into Project or System Path
+
+Place `genignore.py` and `update-ai-ignore.sh` in your project root or `scripts/` directory (or system `~/.local/bin/` for global availability) and make them executable:
+
+```bash
+# Make scripts executable
+chmod +x genignore.py update-ai-ignore.sh
+
+# Optional: Link to ~/.local/bin for global availability across all projects
+mkdir -p ~/.local/bin
+ln -sf "$(pwd)/genignore.py" ~/.local/bin/genignore.py
+ln -sf "$(pwd)/update-ai-ignore.sh" ~/.local/bin/update-ai-ignore.sh
+```
+
+##### Step 2: Install the Git Pre-Commit Hook
+
+Install the hook directly into your repository's `.git/hooks/` directory:
+
+```bash
+# Install to repository hooks
+cp pre-commit .git/hooks/pre-commit
+chmod +x .git/hooks/pre-commit
+```
+
+*Alternative for `pre-commit` Framework (`.pre-commit-config.yaml`)*:
+If your repository utilizes the Python `pre-commit` package, add the local hook to `.pre-commit-config.yaml`:
+
+```yaml
+repos:
+  - repo: local
+    hooks:
+      - id: sync-ai-ignore
+        name: Sync AI Provider Ignore Files
+        entry: ./update-ai-ignore.sh --force --stage
+        language: script
+        files: ^(\.gitignore|\.gitattributes)$
+        pass_filenames: false
+```
+
+#### 5. Command-Line Usage and Practical Examples
+
+##### Example 1: Generate All Provider Files for a New Repository
+
+Generates baseline `.continueignore`, `.agentignore`, `.claude/settings.json`, `CLAUDE.md`, `.vscode/settings.json`, `.github/copilot-instructions.md`, and `AGENTS.md`:
+
+```bash
+./genignore.py --generate-ignore
+```
+
+##### Example 2: Append Custom Exclusion Patterns Across All Tools
+
+Appends binary, archive, key, or secret patterns to `.continueignore` and `.agentignore`, while deep-merging them into `.claude/settings.json` (`permissions.deny`) and `.vscode/settings.json` (`files.exclude`/`search.exclude`):
+
+```bash
+./genignore.py --generate-ignore --append \
+  "*.rpm" "*.tar.gz" "*.png" "*.jpg" "*.svg" \
+  "RPM-GPG-KEY-*" "*.secret.env"
+```
+
+##### Example 3: Target Specific AI Providers
+
+Update only designated agent platforms:
+
+```bash
+# Generate only Continue and Antigravity ignore files
+./genignore.py --generate-ignore --provider continue antigravity
+
+# Update only Claude Code and Codex settings
+./genignore.py --generate-ignore --append --provider claude codex "*.sqlite3"
+```
+
+##### Example 4: Manual Wrapper Execution with Automatic Git Staging
+
+Force an update of all provider files and automatically stage them in Git:
+
+```bash
+./update-ai-ignore.sh --force --stage
+```
+
+##### Example 5: Automated Pre-Commit Workflow in Action
+
+Whenever you edit `.gitignore` or `.gitattributes` and run `git commit`, the hook automatically runs:
+
+```bash
+# 1. Edit .gitignore
+echo "*.data" >> .gitignore
+git add .gitignore
+
+# 2. Run git commit - hook automatically triggers
+git commit -m "chore: ignore data files"
+# Output:
+# [pre-commit] Staged changes detected in: .gitignore
+# [pre-commit] Synchronizing AI provider ignore files via genignore.py...
+# [*] Synchronizing AI provider ignore files using genignore.py...
+# [APPEND]    .continueignore
+# [APPEND]    .agentignore
+# [UPDATE]    .claude/settings.json
+# [UPDATE]    .vscode/settings.json
+# [APPEND]    AGENTS.md
+# [*] Automatically staged updated AI provider files: .continueignore .agentignore .claude/settings.json CLAUDE.md .vscode/settings.json .github/copilot-instructions.md AGENTS.md
+# [✓] AI ignore and instruction files successfully synchronized.
+# [pre-commit] Re-staged updated AI provider files into the current commit.
+```
+
 
 ---
 

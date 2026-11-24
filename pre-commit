@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# Git Pre-Commit Hook: Auto-Sync AI Provider Ignore Files
+# ==============================================================================
+# Install to: .git/hooks/pre-commit (make executable with chmod +x)
+#
+# Inspects staged files before every commit. If .gitignore or .gitattributes
+# are modified in the index, it automatically runs genignore.py --generate-ignore --append
+# and re-stages the synchronized AI provider ignore and instruction files.
+# ==============================================================================
+
+set -euo pipefail
+
+# 1. Verify we are in a Git working tree
+if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    exit 0
+fi
+
+PROJECT_ROOT="$(git rev-parse --show-toplevel)"
+cd "$PROJECT_ROOT"
+
+# 2. Check if .gitignore or .gitattributes are staged in this commit
+STAGED_RULES="$(git diff --cached --name-only | grep -E '^(\.gitignore|\.gitattributes)$' || true)"
+
+if [[ -z "$STAGED_RULES" ]]; then
+    # Neither file is being modified in this commit; exit cleanly
+    exit 0
+fi
+
+echo "[pre-commit] Staged changes detected in: ${STAGED_RULES//$'\n'/, }"
+echo "[pre-commit] Synchronizing AI provider ignore files via genignore.py..."
+
+# 3. Locate genignore.py or wrapper script
+GENIGNORE_BIN=""
+WRAPPER_SCRIPT="$PROJECT_ROOT/update-ai-ignore.sh"
+
+if [[ -f "$WRAPPER_SCRIPT" && -x "$WRAPPER_SCRIPT" ]]; then
+    # Execute the wrapper with --stage and --force to ensure auto-staging
+    "$WRAPPER_SCRIPT" --stage --force
+    exit 0
+fi
+
+# Fallback to direct genignore.py invocation
+CANDIDATE_PATHS=(
+    "$PROJECT_ROOT/genignore.py"
+    "$PROJECT_ROOT/scripts/genignore.py"
+    "$PROJECT_ROOT/.config/genignore.py"
+    "$(which genignore.py 2>/dev/null || true)"
+)
+
+for candidate in "${CANDIDATE_PATHS[@]}"; do
+    if [[ -n "$candidate" && -f "$candidate" ]]; then
+        GENIGNORE_BIN="$candidate"
+        break
+    fi
+done
+
+if [[ -z "$GENIGNORE_BIN" ]]; then
+    echo "[pre-commit] Warning: genignore.py not found. Skipping AI ignore synchronization." >&2
+    exit 0
+fi
+
+PYTHON_BIN="$(which python3 2>/dev/null || which python 2>/dev/null || true)"
+if [[ -z "$PYTHON_BIN" ]]; then
+    echo "[pre-commit] Warning: python3 not found. Skipping AI ignore synchronization." >&2
+    exit 0
+fi
+
+# 4. Execute genignore.py to append/merge missing patterns
+"$PYTHON_BIN" "$GENIGNORE_BIN" --generate-ignore --append
+
+# 5. Automatically stage generated or updated provider files
+PROVIDER_FILES=(
+    ".continueignore"
+    ".agentignore"
+    ".claude/settings.json"
+    "CLAUDE.md"
+    ".vscode/settings.json"
+    ".github/copilot-instructions.md"
+    "AGENTS.md"
+)
+
+STAGED_COUNT=0
+for target in "${PROVIDER_FILES[@]}"; do
+    if [[ -f "$PROJECT_ROOT/$target" ]]; then
+        git add "$PROJECT_ROOT/$target"
+        ((STAGED_COUNT++)) || true
+    fi
+done
+
+echo "[pre-commit] Re-staged updated AI provider files into the current commit."
+exit 0
