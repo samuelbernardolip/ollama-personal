@@ -250,7 +250,7 @@ models:
     roles:
       - rerank
 
-  # 💻 LAPTOP DISK WORKER (Phase 1: Local File Extraction on GTX 1650 4GB)
+  # 💻 LAPTOP DISK WORKER (Phase 1: Local File Extraction on GTX 1650 4GB - Zero Thinking Overhead)
   - name: Laptop-Worker-3B
     provider: openai
     model: qwen2.5-coder:3b-instruct-q8_0
@@ -267,7 +267,7 @@ models:
           num_predict: 2048
           temperature: 0.1
 
-  # 🖥️ OFFICE DISK SYNTHESIZER (Phase 1: Cross-Repo Synthesis on RTX 3050 8GB)
+  # 🖥️ OFFICE DISK SYNTHESIZER (Phase 1: Cross-Repo Synthesis on RTX 3050 8GB - Reasoning-Capable Distillation)
   - name: Office-Synthesizer-7B
     provider: openai
     model: qwen2.5-coder:7b-instruct-q4_K_M
@@ -312,11 +312,6 @@ context:
 #   - OpenAI API (On-demand pay-as-you-go via Codex CLI)
 #   - GitHub MCP (Repository context & issues via host Node runtime)
 # ==============================================================================
-# NOTE ON PHASE 1 EXTRACTION / LOW-RESOURCE LAPTOP USAGE:
-# Loading all 11 MCP servers injects 15,000–30,000+ tokens of raw tool schemas into every prompt.
-# When running intensive Phase 1 file digests on low-VRAM machines (e.g. GTX 1650 4GB), you can
-# temporarily toggle MCP off in Continue by setting 'mcpServers: []' or commenting out the entries below.
-# All 11 MCP servers remain permanently active in Antigravity (~/.gemini/config/mcp_config.json).
 mcpServers:
   # 1. Google Cloud Gemini 4 Carbon via Native agy-mcp-bridge
   - name: gemini-carbon-gcp
@@ -371,6 +366,11 @@ mcpServers:
       - "@modelcontextprotocol/server-github"
     env:
       GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_PERSONAL_ACCESS_TOKEN}"
+
+  # 7. GitHub Models MCP Server (Copilot AI Inference via Local Bridge)
+  - name: github-models
+    command: /home/YOUR_USERNAME/.local/bin/github-models-mcp
+    args: []
 
   # 7. GitLab.com (SaaS, GitLab 19.5+) via Native Remote MCP
   - name: gitlab-com
@@ -739,3 +739,74 @@ prompts:
       3. Cross-Repository Dependency Tree
       4. Target Modernization Architecture & Decoupling Strategy
       Output ONLY structured Markdown with clear operational headers.
+
+  # --- Generative Antigravity Orchestration Prompts (Local RAG to Frontier Agent) ---
+  - name: antigravity-spec-laptop
+    description: "Generate Antigravity orchestration brief via Local RAG (Zero Thinking Overhead, 4GB VRAM)"
+    prompt: |
+      You are a technical lead preparing a strict, token-efficient execution brief for the Google Antigravity orchestrator.
+      Analyze ONLY the retrieved codebase and documentation context below (reranked chunks). Do not invent file paths, symbols, or APIs.
+      Output ONLY a copy-pasteable prompt for Antigravity structured exactly as follows (no thinking tags, no conversational fluff):
+
+      ### 1. Goal & Grounded Scope
+      - **Objective**: [1 clear sentence defining the deliverable]
+      - **Target Files & Lines**: [Exact file paths and line ranges from retrieved context]
+      - **Constraints**: [Key API signatures, versions, or library rules]
+
+      ### 2. Multi-Agent MCP Routing Plan (Cost-Optimized)
+      Instruct the Antigravity Orchestrator (`gemini-3.1-pro` flat-rate default, or `gemini-3.8-flash`) to execute sequentially:
+      - **Stage 1 — Architecture & Edge-Case Check (Deep Reasoning)**:
+        - Delegate via MCP to: `claude-fable-gcp` (`claude-fable-5-2`) or `gemini-carbon-gcp` (`gemini-4-carbon-medium`).
+        - Rule: Pass ONLY file signatures and error logs; require a bulleted diff plan (<250 words).
+      - **Stage 2 — Implementation (Coding)**:
+        - Delegate via MCP to: `openai-codex-plus` (`ask_codex`) or `github-models` (model `auto` / `claude-sonnet-5.5`).
+        - Rule: Apply exact edits to the target files in Section 1.
+      - **Stage 3 — Tests & Verification (Quota-Saving)**:
+        - Delegate via MCP to: `github-models` (model `auto` via Copilot quota) or `gitlab-com` / `gitlab-lip` CI tools.
+        - Rule: Generate unit tests and verify build.
+
+      ### 3. Exit Criteria
+      - [Exact test or build command to run]
+      - **Token Guardrail**: Pass only diffs and outlines between MCP subagents—never full raw files.
+
+      User Request: {{{ input }}}
+
+  - name: antigravity-spec-workstation
+    description: "Generate dynamic, cache-aware MCP orchestration brief via Local RAG (Reasoning Distillation, 8GB VRAM)"
+    prompt: |
+      You are a principal technical architect preparing a token-minimized, cache-aware execution brief for Google Antigravity.
+      Analyze ONLY the retrieved codebase and documentation context below (reranked chunks). Do not invent file paths, symbols, or APIs.
+
+      Output ONLY a copy-pasteable prompt for Antigravity structured exactly as follows:
+
+      ### 1. Grounded Task Context (From Local RAG)
+      - **Objective**: [1 clear sentence defining the exact deliverable]
+      - **Target Files & Line Ranges**: [Exact paths, functions, and lines from retrieved context]
+      - **Technical & Doc Constraints**: [Required API signatures, schemas, or library rules]
+      - **Task Profile**:
+        - *Work Type*: [Boilerplate/CRUD | Focused Feature | Complex Refactor/Bugfix | System Architecture | Docs/Tests]
+        - *Complexity & Reasoning Depth*: [Low | Medium | High]
+        - *Expected Output Volume*: [Low (<300 tokens) | Medium (300–1,500 tokens) | High (>1,500 tokens)]
+
+      ### 2. Phase 0: MCP Model Discovery & Local Cache Check
+      Before routing any subtasks, execute this zero-waste discovery step:
+      1. Check if `.agents/mcp_models_cache.json` exists in the workspace and is **less than 24 hours old**.
+      2. **If valid cache exists**: Read `.agents/mcp_models_cache.json` directly and skip querying MCP servers.
+      3. **If missing or stale**: Query each active MCP server (`github-models`, `openai-codex-api`, `claude-fable-gcp`, `gemini-carbon-gcp`) for currently available model IDs, context limits, and pricing tiers. Save the normalized result to `.agents/mcp_models_cache.json`.
+
+      ### 3. Dynamic Cost-to-Capability Routing Matrix
+      Using the verified models, select the optimal model per stage based on Task Type × Output Volume × Cost Ratio:
+      - **Orchestration & Routing**: `gemini-3.1-pro` (Antigravity default flat-rate) or `gemini-3.8-flash`. Pass diffs/IDs only, never raw files.
+      - **Deep Reasoning / Complex Refactor (Conditional)**: `claude-fable-5-2` (on GCP Model Garden) or `gemini-4-carbon` (on Vertex AI ADC). Output capped at <250 tokens diff plan.
+      - **Focused Code Implementation**: `gpt-5.3-codex` via `openai-codex-plus` or `github-models` (model `auto` for discounted routing). Keep prompt <272K tokens.
+      - **Docs & Test Generation (2-Step Split)**:
+        - *Step A (Planner)*: `gemini-3.8-flash` emits <150-token outline of test cases and doc sections.
+        - *Step B (Writer)*: `github-models` (Copilot quota, $0 marginal) or cheapest writer expands full Markdown docs and tests.
+
+      ### 4. Execution & Verification Protocol
+      1. **Dynamic Selection Log**: Print a compact 4-line summary mapping each stage to the chosen model and justification.
+      2. **Sequential Execution**: Run only stages required by the Task Profile.
+      3. **Verify & Self-Heal**: Run [exact test or build command]. Route stack traces to coder subagent; escalate to reasoning model only if initial fix fails.
+      4. **Hygiene**: Ensure `.agents/mcp_models_cache.json` is listed in both `.gitignore` and `.continueignore`.
+
+      User Request: {{{ input }}}

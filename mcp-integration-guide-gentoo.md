@@ -1,4 +1,4 @@
-# Complete MCP Integration Guide for VS Code on Gentoo Linux: Antigravity, Claude Code, OpenAI Codex, GitHub Copilot, Continue, and GitLab Multi-Instance Mesh (Enterprise Public Edition v9)
+# Complete MCP Integration Guide for VS Code on Gentoo Linux: Antigravity, Claude Code, OpenAI Codex, GitHub Copilot, Continue, and GitLab Multi-Instance Mesh (Enterprise Edition v10)
 
 An enterprise-grade reference architecture for orchestrating multi-provider AI agents, Model Context Protocol (MCP) servers, and isolated developer identities under Gentoo Linux (rolling release, systemd profile, KDE Plasma 6 on Wayland) addressing both **Containerized** and **Native Ebuild** Google Cloud CLI environments.
 
@@ -34,12 +34,12 @@ Both architectures guarantee identical, hermetic isolation across all four provi
 | **OpenAI ChatGPT Plus** | Codex IDE / `codex-plus` | Terminal OAuth (ChatGPT Web) | `~/.codex/` | `openai-codex-plus` | Flat €23/month (subject to cancellation) |
 | **OpenAI API** | Codex IDE / `codex-api` | Secret API Key (`sk-proj-...`) | `~/.codex-api/` | `openai-codex-api` | Pay-as-you-go per token balance |
 | **GitHub Copilot** | Copilot Chat VS Code | GitHub OAuth Token | `~/.config/github-copilot/` | `github-mcp` | Included via Student Pack / Monthly seat |
+| **GitHub Copilot Models** | Antigravity / Claude / Continue | Local Stdio Bridge (`github-models-mcp`) | `~/.config/antigravity-mcp/` | `github-models` | Copilot Subscription ($0 marginal / `auto` default) |
 | **GitLab.com** | Antigravity / Claude / Codex / Copilot / Continue | Native Remote MCP (`mcp-remote` via OAuth) | `~/.mcp-auth/` | `gitlab-com` | Included via SaaS Free/Premium (`glcom_` prefix) |
 | **GitLab LIP (19.5.3)** | Antigravity / Claude / Codex / Copilot / Continue | Native Remote MCP (`mcp-remote` via OAuth/PAT) | `~/.mcp-auth/` | `gitlab-lip` | Institutional production instance (`gllip_` prefix) |
 | **GitLab Admin LIP (19.5.3)** | Antigravity / Claude / Codex / Copilot / Continue | Native Remote MCP (`mcp-remote` via OAuth/PAT) | `~/.mcp-auth/` | `gitlab-admin-lip` | Institutional admin instance (`gladminlip_` prefix) |
 | **GitLab Legacy (18.2.8)** | Antigravity / Claude / Codex / Copilot / Continue | Stdio MCP (`@zereight/mcp-gitlab`) + PAT | `~/.config/antigravity-mcp/` | `gitlab-legacy` | Self-hosted legacy instance (`gllegacy_` prefix) |
 | **GitLab Admin Legacy (16 latest)** | Antigravity / Claude / Codex / Copilot / Continue | Stdio MCP (`@zereight/mcp-gitlab`) + PAT | `~/.config/antigravity-mcp/` | `gitlab-admin-legacy` | Self-hosted legacy admin instance (`gladminleg_` prefix) |
-
 ---
 
 ## 2. Gentoo Host Prerequisites and Portage Package Management
@@ -307,30 +307,51 @@ EOF
 
 ### Step 4.2: Initial Login for Each Identity
 
-Authenticate each provider in its respective isolated storage directory on Gentoo:
+Authenticate each provider in its respective isolated storage directory:
 
 ```bash
 # 1. Google AI Pro OAuth login in Antigravity CLI
-/usr/bin/agy
+agy
 
 # 2. Anthropic Teams OAuth login in Claude Code
-/usr/bin/claude login
+claude login
 
 # 3. OpenAI ChatGPT Plus login in ~/.codex (using /usr/bin/codex)
-/usr/bin/codex login
+codex login
 
 # 4. OpenAI API Key login in ~/.codex-api (using /usr/bin/codex)
 mkdir -p ~/.codex-api
 printenv "sk-proj-YOUR_OPENAI_API_KEY" | CODEX_HOME="$HOME/.codex-api" /usr/bin/codex login
 
 # 5. GitHub Copilot CLI authorization
-/usr/bin/gh auth login --web -s copilot
+gh auth login --web -s copilot
 
-# 6. Initialize Isolated Credential Directory for Legacy GitLab Instances (PAT)
+# Verify Copilot CLI runtime
+~/.local/share/gh/copilot/copilot --version || gh copilot --version
+
+# 6. Initialize Isolated Credential Directory for Legacy and Remote GitLab Instances (PAT)
 mkdir -p ~/.config/antigravity-mcp ~/.mcp-auth
 chmod 700 ~/.config/antigravity-mcp ~/.mcp-auth
 
-# Configure gitlab.legacy.example.org (v18.2.8)
+# Configure gitlab.com (SaaS, 19.5+)
+cat << 'EOF' > ~/.config/antigravity-mcp/gitlab-com.env
+GITLAB_PERSONAL_ACCESS_TOKEN=glpat-YOUR_GITLAB_COM_TOKEN
+EOF
+chmod 600 ~/.config/antigravity-mcp/gitlab-com.env
+
+# Configure gitlab.modern.example.org (19.5.3 Production)
+cat << 'EOF' > ~/.config/antigravity-mcp/gitlab-modern.env
+GITLAB_PERSONAL_ACCESS_TOKEN=glpat-YOUR_MODERN_PROD_TOKEN
+EOF
+chmod 600 ~/.config/antigravity-mcp/gitlab-modern.env
+
+# Configure gitlab-admin.modern.example.org (19.5.3 Admin)
+cat << 'EOF' > ~/.config/antigravity-mcp/gitlab-admin-modern.env
+GITLAB_PERSONAL_ACCESS_TOKEN=glpat-YOUR_MODERN_ADMIN_TOKEN
+EOF
+chmod 600 ~/.config/antigravity-mcp/gitlab-admin-modern.env
+
+# Configure gitlab.legacy.example.org (v18.2.8 Legacy)
 cat << 'EOF' > ~/.config/antigravity-mcp/gitlab-legacy.env
 GITLAB_PERSONAL_ACCESS_TOKEN=glpat-YOUR_LEGACY_TOKEN
 GITLAB_API_URL=https://gitlab.legacy.example.org
@@ -341,7 +362,7 @@ GITLAB_TOOLSETS=issues,merge_requests,repositories,pipelines,wiki
 EOF
 chmod 600 ~/.config/antigravity-mcp/gitlab-legacy.env
 
-# Configure gitlab-admin.legacy.example.org (v16 latest)
+# Configure gitlab-admin.legacy.example.org (v16 latest Legacy Admin)
 cat << 'EOF' > ~/.config/antigravity-mcp/gitlab-admin-legacy.env
 GITLAB_PERSONAL_ACCESS_TOKEN=glpat-YOUR_ADMIN_LEGACY_TOKEN
 GITLAB_API_URL=https://gitlab-admin.legacy.example.org
@@ -602,15 +623,20 @@ chmod +x ~/.local/bin/codex-mcp-bridge
 
 ### Step 5.3: Install `github-models-mcp` (GitHub Copilot Models Bridge)
 
-The standard GitHub MCP server (`@modelcontextprotocol/server-github`) integrates exclusively with repository REST/GraphQL APIs (issues, pull requests, commits, and code search) and **cannot perform AI model completions**. Because GitHub retired the standalone, public free tier of GitHub Models (`models.github.ai`) in favor of authenticated **GitHub Copilot subscriptions**, model completions are routed directly through your local Copilot CLI runtime session.
+The standard `@modelcontextprotocol/server-github` (`github-mcp`) interfaces exclusively with GitHub's REST and GraphQL APIs for repository manipulation (pull requests, issues, branch commits, and code search). It exposes **zero endpoints for language model completions or inferences**. Furthermore, GitHub has retired the standalone public free tier of GitHub Models (`models.github.ai`), routing all personal model inference through authenticated **GitHub Copilot subscriptions**.
 
-This zero-dependency Python bridge (`~/.local/bin/github-models-mcp`) interacts with the official Copilot CLI via its Agent Client Protocol (`copilot --acp`), dynamically discovers your available models (e.g. `claude-sonnet-5.5`, `grok-4.7`, `mai-code-2`, `mai-code-2-flash`, `openai/gpt-4o`, `kimi-k3`), caches them with a configurable TTL, and defaults to Copilot's cost-discounted `auto` model routing:
+To expose your active GitHub Copilot model catalog (`claude-sonnet-5.5`, `grok-4.7`, `mai-code-2`, `mai-code-2-flash`, `openai/gpt-4o`, `openai/gpt-4o-mini`, `kimi-k3`) directly to Google Antigravity, Claude Code, and Continue as a callable subagent tool, install the dedicated standard-IO bridge **`github-models-mcp`**.
 
-```bash
-mkdir -p ~/.local/bin ~/.config/antigravity-mcp
+Deploy `~/.local/bin/github-models-mcp`:
 
-cat << 'EOF' > ~/.local/bin/github-models-mcp
+```python
 #!/usr/bin/env python3
+"""
+github-models-mcp - Standard-IO Model Context Protocol Bridge for GitHub Copilot Models.
+Discovers available models dynamically from the official Copilot CLI via ACP,
+caches catalog with configurable TTL, and exposes ask_github_model and list_github_models.
+"""
+
 import json
 import os
 import shutil
@@ -618,194 +644,226 @@ import subprocess
 import sys
 import time
 
-COPILOT_BIN = (
-    os.path.expanduser('~/.local/share/gh/copilot/copilot')
-    if os.path.exists(os.path.expanduser('~/.local/share/gh/copilot/copilot'))
-    else shutil.which('copilot') or 'copilot'
-)
-CACHE_DIR = os.path.expanduser('~/.config/antigravity-mcp')
-CACHE_FILE = os.path.join(CACHE_DIR, 'models_cache.json')
-CACHE_TTL = int(os.environ.get('GITHUB_MODELS_CACHE_TTL', '3600'))
+CACHE_FILE = os.path.expanduser("~/.config/antigravity-mcp/models_cache.json")
+DEFAULT_CACHE_TTL = 3600  # 1 hour
+
+def get_cache_ttl():
+    try:
+        return int(os.environ.get("GITHUB_MODELS_CACHE_TTL", DEFAULT_CACHE_TTL))
+    except ValueError:
+        return DEFAULT_CACHE_TTL
 
 def send(msg):
     sys.stdout.write(json.dumps(msg) + "\n")
     sys.stdout.flush()
 
-def get_cached_models(force_refresh=False):
-    os.makedirs(CACHE_DIR, exist_ok=True)
-    if not force_refresh and os.path.exists(CACHE_FILE):
+def locate_copilot_cli():
+    candidate = os.path.expanduser("~/.local/share/gh/copilot/copilot")
+    if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+        return candidate
+    resolved = shutil.which("copilot")
+    if resolved:
+        return resolved
+    return None
+
+def fetch_available_models(copilot_bin):
+    if os.path.exists(CACHE_FILE):
         try:
             mtime = os.path.getmtime(CACHE_FILE)
-            if (time.time() - mtime) < CACHE_TTL:
-                with open(CACHE_FILE, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    if isinstance(data, list) and len(data) > 0:
-                        return data
+            if (time.time() - mtime) < get_cache_ttl():
+                with open(CACHE_FILE, "r", encoding="utf-8") as f:
+                    cached = json.load(f)
+                    if isinstance(cached, list) and len(cached) > 0:
+                        return cached
         except Exception:
             pass
 
-    # Discover models dynamically via copilot --acp
+    discovered_models = []
     try:
-        res = subprocess.run([COPILOT_BIN, '--acp'], input='{"method":"models/list"}\n',
-                             capture_output=True, text=True, timeout=5)
-        if res.returncode == 0:
-            for line in res.stdout.splitlines():
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    p = json.loads(line)
-                    if 'result' in p and 'models' in p['result']:
-                        models = p['result']['models']
-                        with open(CACHE_FILE, 'w', encoding='utf-8') as f:
-                            json.dump(models, f, indent=2)
-                        return models
-                except Exception:
-                    continue
+        proc = subprocess.Popen(
+            [copilot_bin, "--acp"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        init_req = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"clientInfo": {"name": "antigravity-mcp", "version": "1.0"}}}
+        proc.stdin.write(json.dumps(init_req) + "\n")
+        proc.stdin.flush()
+
+        models_req = {"jsonrpc": "2.0", "id": 2, "method": "models/list", "params": {}}
+        proc.stdin.write(json.dumps(models_req) + "\n")
+        proc.stdin.flush()
+
+        proc.stdin.close()
+        for line in proc.stdout:
+            try:
+                resp = json.loads(line)
+                if resp.get("id") == 2 and "result" in resp:
+                    items = resp["result"].get("models", [])
+                    discovered_models = [m.get("id") or m.get("name") for m in items if m.get("id") or m.get("name")]
+                    break
+            except json.JSONDecodeError:
+                continue
+        proc.terminate()
     except Exception:
         pass
 
-    # High-quality fallback models available on Copilot subscriptions
-    fallback = [
-        {"id": "auto", "name": "Auto (Cost-Discounted Selection)", "description": "Default: Let Copilot automatically select the best model at discounted quota rate."},
-        {"id": "claude-sonnet-5.5", "name": "Claude Sonnet 5.5", "description": "Anthropic frontier coding & reasoning engine via Copilot."},
-        {"id": "grok-4.7", "name": "xAI Grok 4.7", "description": "xAI reasoning & algorithmic intelligence model via Copilot."},
-        {"id": "mai-code-2", "name": "Microsoft AI Code 2", "description": "Microsoft specialized code generation and refactoring engine."},
-        {"id": "mai-code-2-flash", "name": "Microsoft AI Code 2 Flash", "description": "Ultra-low-latency code completion engine via Copilot."},
-        {"id": "openai/gpt-4o", "name": "OpenAI GPT-4o", "description": "Flagship multimodal developer model via Copilot."},
-        {"id": "openai/gpt-4o-mini", "name": "OpenAI GPT-4o-mini", "description": "Fast, lightweight cost-effective coding model."},
-        {"id": "kimi-k3", "name": "Moonshot Kimi K3", "description": "Long-context reasoning & document analysis model."}
-    ]
+    if not discovered_models:
+        discovered_models = [
+            "auto",
+            "claude-sonnet-5.5",
+            "grok-4.7",
+            "mai-code-2",
+            "mai-code-2-flash",
+            "openai/gpt-4o",
+            "openai/gpt-4o-mini",
+            "kimi-k3"
+        ]
+
     try:
-        with open(CACHE_FILE, 'w', encoding='utf-8') as f:
-            json.dump(fallback, f, indent=2)
+        os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
+        with open(CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(discovered_models, f, indent=2)
     except Exception:
         pass
-    return fallback
 
-TOOLS = [
-    {
-        "name": "ask_github_model",
-        "description": "Query GitHub Copilot model inference with your active GitHub Copilot personal subscription. Defaults to auto for discounted quota usage.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "prompt": {
-                    "type": "string",
-                    "description": "The coding prompt, task, or question for Copilot model inference."
-                },
-                "model": {
-                    "type": "string",
-                    "default": "auto",
-                    "description": "Target Copilot model ID (e.g. auto, claude-sonnet-5.5, grok-4.7, mai-code-2, mai-code-2-flash, openai/gpt-4o). Defaults to auto."
-                }
-            },
-            "required": ["prompt"]
-        }
-    },
-    {
-        "name": "list_github_models",
-        "description": "List all models available on your active GitHub Copilot subscription, including dynamic cached catalog.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "refresh": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Force refresh the models catalog from Copilot runtime, bypassing local cache."
-                }
-            }
-        }
-    }
-]
+    return discovered_models
 
-for line in sys.stdin:
-    line = line.strip()
-    if not line:
-        continue
-    try:
-        req = json.loads(line)
-    except Exception:
-        continue
+def run():
+    copilot_bin = locate_copilot_cli()
+    for raw in sys.stdin:
+        line = raw.strip()
+        if not line:
+            continue
+        try:
+            req = json.loads(line)
+        except json.JSONDecodeError:
+            continue
 
-    if "id" not in req:
-        continue
+        method = req.get("method")
+        req_id = req.get("id")
 
-    req_id = req.get("id")
-    method = req.get("method")
-
-    if method == "initialize":
-        send({
-            "jsonrpc": "2.0",
-            "id": req_id,
-            "result": {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {"tools": {}},
-                "serverInfo": {"name": "github-models-mcp", "version": "1.0.0"}
-            }
-        })
-    elif method == "tools/list":
-        send({
-            "jsonrpc": "2.0",
-            "id": req_id,
-            "result": {"tools": TOOLS}
-        })
-    elif method == "tools/call":
-        params = req.get("params", {})
-        tool_name = params.get("name")
-        args = params.get("arguments", {})
-
-        if tool_name == "list_github_models":
-            force_refresh = args.get("refresh", False)
-            models = get_cached_models(force_refresh=force_refresh)
+        if method == "initialize":
             send({
                 "jsonrpc": "2.0",
                 "id": req_id,
                 "result": {
-                    "content": [{"type": "text", "text": json.dumps(models, indent=2)}],
-                    "isError": False
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {"tools": {}},
+                    "serverInfo": {"name": "github-models-mcp", "version": "1.0.0"}
                 }
             })
-        elif tool_name == "ask_github_model":
-            prompt = args.get("prompt", "")
-            model = args.get("model", "auto")
-            if not model or model.strip() == "":
-                model = "auto"
+        elif method == "tools/list":
+            models = fetch_available_models(copilot_bin) if copilot_bin else ["auto"]
+            send({
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {
+                    "tools": [
+                        {
+                            "name": "ask_github_model",
+                            "description": "Query GitHub Copilot model inference with your active Copilot subscription.",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {
+                                    "prompt": {"type": "string", "description": "The coding prompt or instruction"},
+                                    "model": {
+                                        "type": "string",
+                                        "enum": models,
+                                        "default": "auto",
+                                        "description": "Model identifier. Defaults to 'auto' for cost-discounted model selection."
+                                    }
+                                },
+                                "required": ["prompt"]
+                            }
+                        },
+                        {
+                            "name": "list_github_models",
+                            "description": "List all active models supported by your GitHub Copilot subscription.",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {
+                                    "refresh": {"type": "boolean", "description": "Force cache invalidation"}
+                                }
+                            }
+                        }
+                    ]
+                }
+            })
+        elif method == "tools/call":
+            params = req.get("params", {})
+            tname = params.get("name")
+            args = params.get("arguments", {})
 
-            cmd = [COPILOT_BIN, "-p", prompt] if model == "auto" else [COPILOT_BIN, "--model", model, "-p", prompt]
-            try:
-                proc = subprocess.run(cmd, capture_output=True, text=True)
-                output = proc.stdout if proc.returncode == 0 else f"Copilot Error ({proc.returncode}): {proc.stderr}"
+            if tname == "list_github_models":
+                if args.get("refresh") and os.path.exists(CACHE_FILE):
+                    try:
+                        os.remove(CACHE_FILE)
+                    except Exception:
+                        pass
+                models = fetch_available_models(copilot_bin) if copilot_bin else []
                 send({
                     "jsonrpc": "2.0",
                     "id": req_id,
                     "result": {
-                        "content": [{"type": "text", "text": output}],
-                        "isError": proc.returncode != 0
+                        "content": [{"type": "text", "text": json.dumps({"active_models": models}, indent=2)}],
+                        "isError": False
                     }
                 })
-            except Exception as e:
-                send({
-                    "jsonrpc": "2.0",
-                    "id": req_id,
-                    "result": {
-                        "content": [{"type": "text", "text": f"Bridge Execution Error: {str(e)}"}],
-                        "isError": True
-                    }
-                })
-EOF
+            elif tname == "ask_github_model":
+                prompt = args.get("prompt", "")
+                chosen_model = args.get("model") or "auto"
+                if not copilot_bin:
+                    send({
+                        "jsonrpc": "2.0",
+                        "id": req_id,
+                        "result": {
+                            "content": [{"type": "text", "text": "Copilot CLI not found. Run 'gh auth login --web -s copilot'."}],
+                            "isError": True
+                        }
+                    })
+                    continue
 
-chmod +x ~/.local/bin/github-models-mcp
+                cmd = [copilot_bin, "exec"]
+                if chosen_model != "auto":
+                    cmd.extend(["-m", chosen_model])
+                cmd.append(prompt)
+
+                try:
+                    res = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+                    out = res.stdout if res.returncode == 0 else f"Error ({res.returncode}): {res.stderr}"
+                    send({
+                        "jsonrpc": "2.0",
+                        "id": req_id,
+                        "result": {
+                            "content": [{"type": "text", "text": out}],
+                            "isError": res.returncode != 0
+                        }
+                    })
+                except Exception as e:
+                    send({
+                        "jsonrpc": "2.0",
+                        "id": req_id,
+                        "result": {
+                            "content": [{"type": "text", "text": f"Execution failed: {str(e)}"}],
+                            "isError": True
+                        }
+                    })
+            else:
+                send({"jsonrpc": "2.0", "id": req_id, "error": {"code": -32601, "message": "Method not found"}})
+        elif method == "ping":
+            send({"jsonrpc": "2.0", "id": req_id, "result": {}})
+
+if __name__ == "__main__":
+    run()
 ```
 
-Verify the bridge protocol handshake directly in your terminal:
+Make the script executable:
 
 ```bash
-printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n{"jsonrpc":"2.0","id":2,"method":"tools/list"}\n' \
-  | ~/.local/bin/github-models-mcp
+chmod +x ~/.local/bin/github-models-mcp
 ```
-
-Confirm that the output returns `protocolVersion: 2024-11-05` and registers both `ask_github_model` (with default `auto`) and `list_github_models`.
 
 
 ---
@@ -977,21 +1035,21 @@ claude mcp add --scope user github-mcp \
   -e GITHUB_PERSONAL_ACCESS_TOKEN="${GITHUB_PERSONAL_ACCESS_TOKEN}" \
   -- npx -y @modelcontextprotocol/server-github
 
-# Register GitHub Models Bridge via Copilot Runtime
+# Register GitHub Models via Local Copilot Bridge
 claude mcp add --scope user github-models \
   -- "/home/YOUR_USERNAME/.local/bin/github-models-mcp"
 
 # Register GitLab.com (SaaS, 19.5+) via mcp-remote + Bearer Header
 claude mcp add --scope user gitlab-com \
-  -- sh -c 'set -a && [ -f "$HOME/.config/antigravity-mcp/gitlab-com.env" ] && . "$HOME/.config/antigravity-mcp/gitlab-com.env"; set +a && exec npx -y mcp-remote https://gitlab.com/api/v4/mcp --header "Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN" --header X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security --header X-Gitlab-Mcp-Server-Tool-Name-Prefix:glcom_
+  -- sh -c 'set -a && [ -f "$HOME/.config/antigravity-mcp/gitlab-com.env" ] && . "$HOME/.config/antigravity-mcp/gitlab-com.env"; set +a && exec npx -y mcp-remote https://gitlab.com/api/v4/mcp --header "Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN" --header X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security --header X-Gitlab-Mcp-Server-Tool-Name-Prefix:glcom_'
 
 # Register GitLab LIP (19.5.3) via mcp-remote + Bearer Header
 claude mcp add --scope user gitlab-lip \
-  -- sh -c 'set -a && [ -f "$HOME/.config/antigravity-mcp/gitlab-lip.env" ] && . "$HOME/.config/antigravity-mcp/gitlab-lip.env"; set +a && exec npx -y mcp-remote https://gitlab.lip.pt/api/v4/mcp --header "Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN" --header X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security --header X-Gitlab-Mcp-Server-Tool-Name-Prefix:gllip_
+  -- sh -c 'set -a && [ -f "$HOME/.config/antigravity-mcp/gitlab-modern.env" ] && . "$HOME/.config/antigravity-mcp/gitlab-modern.env"; set +a && exec npx -y mcp-remote https://gitlab.modern.example.org/api/v4/mcp --header "Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN" --header X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security --header X-Gitlab-Mcp-Server-Tool-Name-Prefix:gllip_'
 
 # Register GitLab Admin LIP (19.5.3) via mcp-remote + Bearer Header
 claude mcp add --scope user gitlab-admin-lip \
-  -- sh -c 'set -a && [ -f "$HOME/.config/antigravity-mcp/gitlab-admin-lip.env" ] && . "$HOME/.config/antigravity-mcp/gitlab-admin-lip.env"; set +a && exec npx -y mcp-remote https://gitlab-admin.lip.pt/api/v4/mcp --header "Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN" --header X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security --header X-Gitlab-Mcp-Server-Tool-Name-Prefix:gladminlip_
+  -- sh -c 'set -a && [ -f "$HOME/.config/antigravity-mcp/gitlab-admin-modern.env" ] && . "$HOME/.config/antigravity-mcp/gitlab-admin-modern.env"; set +a && exec npx -y mcp-remote https://gitlab-admin.modern.example.org/api/v4/mcp --header "Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN" --header X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security --header X-Gitlab-Mcp-Server-Tool-Name-Prefix:gladminlip_'
 
 # Register GitLab Legacy (18.2.8) via @zereight/mcp-gitlab + .env
 claude mcp add --scope user gitlab-legacy \
@@ -1047,28 +1105,28 @@ args = [
 command = "sh"
 args = [
   "-c",
-  "set -a && [ -f \"$HOME/.config/antigravity-mcp/gitlab-lip.env\" ] && . \"$HOME/.config/antigravity-mcp/gitlab-lip.env\"; set +a && exec npx -y mcp-remote https://gitlab.lip.pt/api/v4/mcp --header \"Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN\" --header \"X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security\" --header \"X-Gitlab-Mcp-Server-Tool-Name-Prefix:gllip_\""
+  "set -a && [ -f \"$HOME/.config/antigravity-mcp/gitlab-modern.env\" ] && . \"$HOME/.config/antigravity-mcp/gitlab-modern.env\"; set +a && exec npx -y mcp-remote https://gitlab.modern.example.org/api/v4/mcp --header \"Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN\" --header \"X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security\" --header \"X-Gitlab-Mcp-Server-Tool-Name-Prefix:gllip_\""
 ]
 
 [mcp_servers.gitlab-admin-lip]
 command = "sh"
 args = [
   "-c",
-  "set -a && [ -f \"$HOME/.config/antigravity-mcp/gitlab-admin-lip.env\" ] && . \"$HOME/.config/antigravity-mcp/gitlab-admin-lip.env\"; set +a && exec npx -y mcp-remote https://gitlab-admin.lip.pt/api/v4/mcp --header \"Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN\" --header \"X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security\" --header \"X-Gitlab-Mcp-Server-Tool-Name-Prefix:gladminlip_\""
+  "set -a && [ -f \"$HOME/.config/antigravity-mcp/gitlab-admin-modern.env\" ] && . \"$HOME/.config/antigravity-mcp/gitlab-admin-modern.env\"; set +a && exec npx -y mcp-remote https://gitlab-admin.modern.example.org/api/v4/mcp --header \"Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN\" --header \"X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security\" --header \"X-Gitlab-Mcp-Server-Tool-Name-Prefix:gladminlip_\""
 ]
 
 [mcp_servers.gitlab-legacy]
 command = "sh"
 args = [
   "-c",
-  "set -a && . "$HOME/.config/antigravity-mcp/gitlab-legacy.env" && set +a && exec npx -y @zereight/mcp-gitlab"
+  "set -a && . \"$HOME/.config/antigravity-mcp/gitlab-legacy.env\" && set +a && exec npx -y @zereight/mcp-gitlab"
 ]
 
 [mcp_servers.gitlab-admin-legacy]
 command = "sh"
 args = [
   "-c",
-  "set -a && . "$HOME/.config/antigravity-mcp/gitlab-admin-legacy.env" && set +a && exec npx -y @zereight/mcp-gitlab"
+  "set -a && . \"$HOME/.config/antigravity-mcp/gitlab-admin-legacy.env\" && set +a && exec npx -y @zereight/mcp-gitlab"
 ]
 ```
 
@@ -1132,21 +1190,35 @@ GitHub Copilot operates in VS Code via official marketplace extensions. Configur
       "command": "sh",
       "args": [
         "-c",
-        "set -a && [ -f \"$HOME/.config/antigravity-mcp/gitlab-com.env\" ] && . \"$HOME/.config/antigravity-mcp/gitlab-com.env\"; set +a && exec npx -y mcp-remote https://gitlab.com/api/v4/mcp --header \"Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN\" --header \"X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security\" --header \"X-Gitlab-Mcp-Server-Tool-Name-Prefix:glcom_\""
+        "set -a && [ -f \"$HOME/.config/antigravity-mcp/gitlab-com.env\" ] && . \"$HOME/.config/antigravity-mcp/gitlab-com.env\"; set +a && exec npx -y mcp-remote https://gitlab.com/api/v4/mcp --header \"Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN\"
+        "--header",
+        "X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security",
+        "--header",
+        "X-Gitlab-Mcp-Server-Tool-Name-Prefix:glcom_"
       ]
     },
     "gitlab-lip": {
-      "command": "sh",
+      "command": "npx",
       "args": [
-        "-c",
-        "set -a && [ -f \"$HOME/.config/antigravity-mcp/gitlab-lip.env\" ] && . \"$HOME/.config/antigravity-mcp/gitlab-lip.env\"; set +a && exec npx -y mcp-remote https://gitlab.lip.pt/api/v4/mcp --header \"Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN\" --header \"X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security\" --header \"X-Gitlab-Mcp-Server-Tool-Name-Prefix:gllip_\""
+        "-y",
+        "mcp-remote",
+        "https://gitlab.lip.pt",
+        "--header",
+        "X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security",
+        "--header",
+        "X-Gitlab-Mcp-Server-Tool-Name-Prefix:gllip_"
       ]
     },
     "gitlab-admin-lip": {
-      "command": "sh",
+      "command": "npx",
       "args": [
-        "-c",
-        "set -a && [ -f \"$HOME/.config/antigravity-mcp/gitlab-admin-lip.env\" ] && . \"$HOME/.config/antigravity-mcp/gitlab-admin-lip.env\"; set +a && exec npx -y mcp-remote https://gitlab-admin.lip.pt/api/v4/mcp --header \"Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN\" --header \"X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security\" --header \"X-Gitlab-Mcp-Server-Tool-Name-Prefix:gladminlip_\""
+        "-y",
+        "mcp-remote",
+        "https://gitlab-admin.lip.pt",
+        "--header",
+        "X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security",
+        "--header",
+        "X-Gitlab-Mcp-Server-Tool-Name-Prefix:gladminlip_"
       ]
     },
     "gitlab-legacy": {
@@ -1238,26 +1310,26 @@ mcpServers:
     command: /home/YOUR_USERNAME/.local/bin/github-models-mcp
     args: []
 
-  # 8. GitLab.com (SaaS, GitLab 19.5+) via Native Remote MCP + Bearer PAT
+  # 8. GitLab.com (SaaS, GitLab 19.5+) via Native Remote MCP + Bearer Header
   - name: gitlab-com
     command: sh
     args:
       - -c
       - set -a && [ -f "$HOME/.config/antigravity-mcp/gitlab-com.env" ] && . "$HOME/.config/antigravity-mcp/gitlab-com.env"; set +a && exec npx -y mcp-remote https://gitlab.com/api/v4/mcp --header "Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN" --header X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security --header X-Gitlab-Mcp-Server-Tool-Name-Prefix:glcom_
 
-  # 9. GitLab LIP (Self-Hosted Production, GitLab 19.5.3) via Native Remote MCP
+  # 9. GitLab LIP (Self-Hosted Production, GitLab 19.5.3) via Native Remote MCP + Bearer Header
   - name: gitlab-lip
     command: sh
     args:
       - -c
-      - set -a && [ -f "$HOME/.config/antigravity-mcp/gitlab-lip.env" ] && . "$HOME/.config/antigravity-mcp/gitlab-lip.env"; set +a && exec npx -y mcp-remote https://gitlab.lip.pt/api/v4/mcp --header "Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN" --header X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security --header X-Gitlab-Mcp-Server-Tool-Name-Prefix:gllip_
+      - set -a && [ -f "$HOME/.config/antigravity-mcp/gitlab-modern.env" ] && . "$HOME/.config/antigravity-mcp/gitlab-modern.env"; set +a && exec npx -y mcp-remote https://gitlab.modern.example.org/api/v4/mcp --header "Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN" --header X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security --header X-Gitlab-Mcp-Server-Tool-Name-Prefix:gllip_
 
-  # 10. GitLab Admin LIP (Self-Hosted Admin, GitLab 19.5.3) via Native Remote MCP
+  # 10. GitLab Admin LIP (Self-Hosted Admin, GitLab 19.5.3) via Native Remote MCP + Bearer Header
   - name: gitlab-admin-lip
     command: sh
     args:
       - -c
-      - set -a && [ -f "$HOME/.config/antigravity-mcp/gitlab-admin-lip.env" ] && . "$HOME/.config/antigravity-mcp/gitlab-admin-lip.env"; set +a && exec npx -y mcp-remote https://gitlab-admin.lip.pt/api/v4/mcp --header "Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN" --header X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security --header X-Gitlab-Mcp-Server-Tool-Name-Prefix:gladminlip_
+      - set -a && [ -f "$HOME/.config/antigravity-mcp/gitlab-admin-modern.env" ] && . "$HOME/.config/antigravity-mcp/gitlab-admin-modern.env"; set +a && exec npx -y mcp-remote https://gitlab-admin.modern.example.org/api/v4/mcp --header "Authorization: Bearer $GITLAB_PERSONAL_ACCESS_TOKEN" --header X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security --header X-Gitlab-Mcp-Server-Tool-Name-Prefix:gladminlip_
 
   # 11. GitLab Legacy (Self-Hosted Legacy, GitLab 18.2.8) via @zereight/mcp-gitlab + .env
   - name: gitlab-legacy
@@ -1278,134 +1350,164 @@ Because `GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_PERSONAL_ACCESS_TOKEN}"` dynami
 
 ---
 
-### Step 7.3: Strategy to Optimize Token Costs via Local RAG and Chat Mode
+### Step 7.3: Strategy to Optimize Token Costs with Local RAG and Antigravity Orchestration
 
-To maintain high development velocity across resource-constrained hardware (e.g. laptop with AMD Ryzen 7 5800H, 16GB RAM, and NVIDIA GTX 1650 4GB VRAM) while orchestrating across 12 MCP backends, local execution must be decoupled from frontier cloud orchestration:
+Running small local models (3B–7B) directly as autonomous orchestrators across all 12 MCP servers is ineffective because loading the complete server catalog injects **15,000 to 30,000+ tokens of raw JSON tool schemas** into every turn. On consumer GPUs (GTX 1650 4GB or RTX 3050 8GB), tool schemas alone exhaust the KV cache, causing severe generation latency and malformed tool-call syntax.
 
+The optimal architecture decouples **zero-cost local data preparation in Continue** from **high-context frontier orchestration in Google Antigravity**:
 1. **Stage 1: Zero-Cost Local Pre-Processing (VS Code Continue + Ollama + CPU Reranker)**: Local hardware indexes, extracts, and pre-compresses raw files into dense Markdown architectural digests without spending a single cloud API token.
-2. **Stage 2: High-Context Frontier Orchestration (VS Code Antigravity + Google AI Pro / Model Garden)**: Antigravity's 1M+ token context window ingests the clean local digest and orchestrates specialized MCP subagents (`claude-fable-gcp`, `gemini-carbon-gcp`, `openai-codex-plus`, `github-models`) to generate migration plans, audit infrastructure, and produce production code.
+2. **Stage 2: High-Context Frontier Orchestration (VS Code Antigravity + Google AI Pro / Model Garden)**: Antigravity's 1M+ token context window ingests the clean local digest and orchestrates specialized MCP subagents (`claude-fable-gcp`, `gemini-carbon-gcp`, `openai-codex-plus`, `github-models`, and GitLab servers) to execute migration plans, code generation, and repository updates.
 
 #### 1. Hardware Allocation Strategy (Laptop vs. Office Desktop)
 
 | Workload Phase | Machine & Hardware | Model Roles | Responsibilities |
 | :--- | :--- | :--- | :--- |
-| **Phase 1: Local Extraction & Indexing** | Laptop (GTX 1650 4GB + 16GB RAM) | `qwen2.5-coder:3b` (GPU) + `nomic-embed-text` (CPU Container, port 11435) | Extract single-file purpose, triggers, endpoints, and dependencies into `/digest` files. |
-| **Phase 1: Full-Workspace Synthesis** | Desktop (RTX 3050 8GB + 32GB RAM) | `qwen2.5-coder:7b` (GPU) + `bge-reranker-base` (CPU Container, port 8080) | Cross-repo `@codebase` semantic search and consolidation into master specification. |
+| **Phase 1: Local Extraction & Indexing** | Laptop (GTX 1650 4GB + 16GB RAM) | `Laptop-Worker-3B` (`qwen2.5-coder:3b-instruct-q8_0`, port 11434) + `nomic-embed-text` (CPU Container, port 11435) | Extract single-file purpose, triggers, endpoints, and dependencies into `/digest` files. Zero thinking-token overhead (<think> disabled) to maximize speed. |
+| **Phase 1: Full-Workspace Synthesis** | Desktop (RTX 3050 8GB + 32GB RAM) | `Office-Synthesizer-7B` (`qwen2.5-coder:7b-instruct-q4_K_M`, port 11434) + `bge-reranker-base` (CPU Container, port 8080) | Cross-repo `@codebase` semantic search and consolidation into master specification with reasoning distillation. |
 | **Phase 2: Frontier MCP Orchestration** | Flat-Rate Cloud (Google AI Pro in Antigravity) | `gemini-3.1-pro` / `gemini-4-carbon` (1M+ context) | Dispatches tasks across MCP subagents; consumes 0 local VRAM for tool schemas. |
 
-#### 2. Local Two-Stage RAG Indexing & `.continueignore` Setup
+#### 2. How `nFinal` Works & Passing Reranked Chunks to Prompts
 
-To index all project code locally without memory exhaustion or index pollution:
-1. **Parallel CPU Embedding Engine (`ollama-embed-cpu`)**: Run the dedicated CPU Ollama service on port 11435 (`NVIDIA_VISIBLE_DEVICES=none`). This allows Continue's `@codebase` indexer to embed files across all 16 Ryzen CPU threads in system RAM while your GPU coding model stays permanently loaded in VRAM on port 11434.
-2. **Embedded Vector Database (LanceDB)**: Continue stores vectors locally in `~/.continue/index/` using embedded LanceDB and SQLite metadata caches, requiring zero standalone vector database daemons.
-3. **Workspace Filtering via `.continueignore`**: Exclude static assets, build outputs, and lockfiles by placing `.continueignore` in the repository root:
-   ```text
-   node_modules/
-   dist/
-   build/
-   target/
-   .git/
-   .venv/
-   venv/
-   __pycache__/
-   *.lock
-   *.min.js
-   *.map
-   *.sqlite3
-   *.html
-   *.json
-   !package.json
-   !composer.json
-   migration-prep/
-   ```
+Under the `context:` block in `~/.continue/config.yaml`, the two-stage RAG pipeline is configured as follows:
 
-#### 3. Mandatory Chat Mode (Avoid Agent & Plan Modes on Low VRAM)
-
-When working with local 3B to 7B models in Continue:
-* **Zero Schema Overhead**: Agent and Plan modes inject internal file-editing, terminal, and search tool schemas (**4,000 to 6,000 tokens of JSON bloat**) into every single model turn and enforce rigid JSON tool-calling loops. On a 3B model (`qwen2.5-coder:3b`), tool calls frequently stall, emit malformed syntax, or enter infinite retries.
-* **Deterministic Single-Pass Execution**: **Chat mode** performs single-pass completions directly against the exact files you attach, dedicating 100% of the 16k context window to source code.
-
-#### 4. Attaching Folders Without Deprecated `@Folder`
-
-In modern Continue releases, `@Folder` and `@Codebase` context provider syntax are officially deprecated in `config.yaml`. To attach entire directories cleanly:
-1. In the VS Code Explorer sidebar, **right-click the target repository folder** (or select 3–5 related files with `Ctrl+Click`).
-2. Select **Continue → Add to Chat** (or drag the folder directly into the Continue chat input box).
-3. Continue automatically expands the directory and attaches all allowed files as individual `@File` pills while strictly honoring your `.continueignore` rules.
-
-#### 5. The 3-Phase Migration Pipeline
-
-##### Phase 1: Local File Extraction (`/digest`)
-
-1. Open Continue chat (**`Ctrl+L`**), verify **Chat** mode is selected with model `Laptop-Worker-3B`.
-2. Attach 3 to 5 related files (or a folder under 12,000 tokens), type `/digest`, and press Enter.
-3. Save the dense Markdown output to thematic files in `migration-prep/` (e.g. `01-ci.md`, `02-verification.md`, `03-ansible.md`).
-4. Click **`+` (New Session)** between batches to clear the context window.
-
-##### Phase 2: Master Consolidation (`/synthesize`)
-
-1. Open a fresh Chat session (**`+`**).
-2. Attach only your digest files (`@File migration-prep/01-ci.md`, `@File migration-prep/02-verification.md`, etc.).
-3. Type `/synthesize` and press Enter.
-4. Save the consolidated output as `migration-prep/MASTER_ARCHITECTURE_SPEC.md` (< 12,000 words).
-
-##### Phase 3: Frontier Multi-Agent Orchestration in Antigravity
-
-1. Open **Google Antigravity (`Ctrl+L`)** in **Agent** mode on your **Google AI Pro** (`gemini-3.1-pro`) or **Google Cloud Agent Platform** (`gemini-4-carbon`) subscription.
-2. Attach `@migration-prep/MASTER_ARCHITECTURE_SPEC.md` and execute the master orchestration prompt:
-
-```markdown
-Read `@migration-prep/MASTER_ARCHITECTURE_SPEC.md`. You are the lead enterprise migration architect orchestrating our specialized MCP subagents to modernize this software infrastructure.
-
-Execute this 3-stage multi-agent workflow sequentially, passing only the compact outputs from each stage to the next:
-
-### Stage 1: Architectural Migration Plan (`claude-fable-gcp`)
-Call `claude-fable-gcp` (model `claude-fable-5-2`) with the contents of `@migration-prep/MASTER_ARCHITECTURE_SPEC.md` and instruct it to:
-1. Design a 3-wave phased migration plan replacing legacy Jenkins and monolithic recipes with modern containerized CI/CD (GitHub Actions or GitLab CI) and decoupled validation gates.
-2. Structure the deliverables, dependencies, and cutover milestones for each repository.
-
-### Stage 2: Infrastructure & Risk Audit (`gemini-carbon-gcp`)
-Call `gemini-carbon-gcp` (using model `gemini-4-carbon-medium`) with the Wave 1–3 plan from Stage 1 and the Infrastructure Coupling section of `@migration-prep/MASTER_ARCHITECTURE_SPEC.md`. Instruct it to:
-1. Identify single points of failure, hardcoded external endpoints, base-image incompatibilities (e.g., EL7 to Rocky/Alma 9), and credential migration risks.
-2. Specify rollback procedures and parallel validation checks to ensure zero downtime.
-
-### Stage 3: Starter CI Implementation (`openai-codex-plus` or `github-models`)
-Call `openai-codex-plus` (`ask_codex` with model `gpt-5.3-codex`) or `github-models` (`ask_github_model` with model `auto` / `claude-sonnet-5.5`) with the Wave 1 specification from Stage 1. Instruct it to:
-1. Generate clean, parameterized CI workflow templates and container build matrices for the core verification pipeline.
-2. Provide a smoke-test parity checklist comparing legacy outputs with the new pipeline.
-
-### Final Output
-Synthesize all subagent deliverables into a clean, publication-ready `MIGRATION_ROADMAP.md` in my workspace root.
+```yaml
+context:
+  - provider: file
+  - provider: tree
+  - provider: open
+  - provider: diff
+  - provider: codebase
+    params:
+      nRetrieve: 12   # Candidate chunks fetched from LanceDB vector store
+      nFinal: 3       # Top scored chunks sent to the LLM after CPU cross-encoder reranking
+      useReranking: true
 ```
+
+#### How the Pipeline Processes Your Query:
+
+1. **Initial Vector Retrieval (`nRetrieve: 12`)**: When you invoke `@codebase`, Continue embeds your query using `embeddingsProvider` (`nomic-embed-text` on CPU port 11435) and retrieves the top 12 candidate snippets from local LanceDB (`~/.continue/index/`).
+2. **Cross-Encoder Scoring**: Continue sends the 12 candidate chunks along with your query to `rerank-server` on port 8080 (`BAAI/bge-reranker-base`). The cross-encoder evaluates full attention across `[query, chunk]` pairs and assigns precise semantic relevance scores (0.0 to 1.0).
+3. **Filtering to Top Chunks (`nFinal: 3`)**: Continue discards low-scoring noise and selects **only the top 3 scored chunks** (~1,500 tokens).
+4. **Passing to Custom Prompts**: When a custom slash command (such as `/antigravity-spec-laptop` or `/antigravity-spec-workstation`) is executed in Continue Chat (**`Ctrl+L`**), Continue automatically binds these top 3 reranked chunks directly into the template's `{{ input }}` variable:
+   ```text
+   @codebase /antigravity-spec-laptop modernize the Jenkins quality verification pipeline
+   ```
+   The local model analyzes only these curated, high-relevance chunks and outputs a structured execution brief for Antigravity without seeing irrelevant files.
+
+#### 3. Generative Orchestration Prompts
+
+#### Prompt A: Laptop Worker (Zero Thinking-Token Overhead / 4GB VRAM)
+
+Configured in `~/.continue/config.yaml` as `/antigravity-spec-laptop`:
+
+```yaml
+  - name: antigravity-spec-laptop
+    description: "Generate Antigravity orchestration brief via Local RAG (Zero Thinking Overhead, 4GB VRAM)"
+    prompt: |
+      You are a technical lead preparing a strict, token-efficient execution brief for the Google Antigravity orchestrator.
+      Analyze ONLY the retrieved codebase and documentation context below (reranked chunks). Do not invent file paths, symbols, or APIs.
+      Output ONLY a copy-pasteable prompt for Antigravity structured exactly as follows (no thinking tags, no conversational fluff):
+
+      ### 1. Goal & Grounded Scope
+      - **Objective**: [1 clear sentence defining the deliverable]
+      - **Target Files & Lines**: [Exact file paths and line ranges from retrieved context]
+      - **Constraints**: [Key API signatures, versions, or library rules]
+
+      ### 2. Multi-Agent MCP Routing Plan (Cost-Optimized)
+      Instruct the Antigravity Orchestrator (`gemini-3.1-pro` flat-rate default, or `gemini-3.8-flash`) to execute sequentially:
+      - **Stage 1 — Architecture & Edge-Case Check (Deep Reasoning)**:
+        - Delegate via MCP to: `claude-fable-gcp` (`claude-fable-5-2`) or `gemini-carbon-gcp` (`gemini-4-carbon-medium`).
+        - Rule: Pass ONLY file signatures and error logs; require a bulleted diff plan (<250 words).
+      - **Stage 2 — Implementation (Coding)**:
+        - Delegate via MCP to: `openai-codex-plus` (`ask_codex`) or `github-models` (model `auto` / `claude-sonnet-5.5`).
+        - Rule: Apply exact edits to the target files in Section 1.
+      - **Stage 3 — Tests & Verification (Quota-Saving)**:
+        - Delegate via MCP to: `github-models` (model `auto` via Copilot quota) or `gitlab-com` / `gitlab-lip` CI tools.
+        - Rule: Generate unit tests and verify build.
+
+      ### 3. Exit Criteria
+      - [Exact test or build command to run]
+      - **Token Guardrail**: Pass only diffs and outlines between MCP subagents—never full raw files.
+
+      User Request: {{ input }}
+```
+
+#### Prompt B: Workstation Synthesizer (Reasoning-Capable Distillation / 8GB VRAM)
+
+Configured in `~/.continue/config.yaml` as `/antigravity-spec-workstation`:
+
+```yaml
+  - name: antigravity-spec-workstation
+    description: "Generate dynamic, cache-aware MCP orchestration brief via Local RAG (Reasoning Distillation, 8GB VRAM)"
+    prompt: |
+      You are a principal technical architect preparing a token-minimized, cache-aware execution brief for Google Antigravity.
+      Analyze ONLY the retrieved codebase and documentation context below (reranked chunks). Do not invent file paths, symbols, or APIs.
+
+      Output ONLY a copy-pasteable prompt for Antigravity structured exactly as follows:
+
+      ### 1. Grounded Task Context (From Local RAG)
+      - **Objective**: [1 clear sentence defining the exact deliverable]
+      - **Target Files & Line Ranges**: [Exact paths, functions, and lines from retrieved context]
+      - **Technical & Doc Constraints**: [Required API signatures, schemas, or library rules]
+      - **Task Profile**:
+        - *Work Type*: [Boilerplate/CRUD | Focused Feature | Complex Refactor/Bugfix | System Architecture | Docs/Tests]
+        - *Complexity & Reasoning Depth*: [Low | Medium | High]
+        - *Expected Output Volume*: [Low (<300 tokens) | Medium (300–1,500 tokens) | High (>1,500 tokens)]
+
+      ### 2. Phase 0: MCP Model Discovery & Local Cache Check
+      Before routing any subtasks, execute this zero-waste discovery step:
+      1. Check if `.agents/mcp_models_cache.json` exists in the workspace and is **less than 24 hours old**.
+      2. **If valid cache exists**: Read `.agents/mcp_models_cache.json` directly and skip querying MCP servers.
+      3. **If missing or stale**: Query each active MCP server (`github-models`, `openai-codex-api`, `claude-fable-gcp`, `gemini-carbon-gcp`) for currently available model IDs, context limits, and pricing tiers. Save the normalized result to `.agents/mcp_models_cache.json`.
+
+      ### 3. Dynamic Cost-to-Capability Routing Matrix
+      Using the verified models, select the optimal model per stage based on Task Type × Output Volume × Cost Ratio:
+      - **Orchestration & Routing**: `gemini-3.1-pro` (Antigravity default flat-rate) or `gemini-3.8-flash`. Pass diffs/IDs only, never raw files.
+      - **Deep Reasoning / Complex Refactor (Conditional)**: `claude-fable-5-2` (on GCP Model Garden) or `gemini-4-carbon` (on Vertex AI ADC). Output capped at <250 tokens diff plan.
+      - **Focused Code Implementation**: `gpt-5.3-codex` via `openai-codex-plus` or `github-models` (model `auto` for discounted routing). Keep prompt <272K tokens.
+      - **Docs & Test Generation (2-Step Split)**:
+        - *Step A (Planner)*: `gemini-3.8-flash` emits <150-token outline of test cases and doc sections.
+        - *Step B (Writer)*: `github-models` (Copilot quota, $0 marginal) or cheapest writer expands full Markdown docs and tests.
+
+      ### 4. Execution & Verification Protocol
+      1. **Dynamic Selection Log**: Print a compact 4-line summary mapping each stage to the chosen model and justification.
+      2. **Sequential Execution**: Run only stages required by the Task Profile.
+      3. **Verify & Self-Heal**: Run [exact test or build command]. Route stack traces to coder subagent; escalate to reasoning model only if initial fix fails.
+      4. **Hygiene**: Ensure `.agents/mcp_models_cache.json` is listed in both `.gitignore` and `.continueignore`.
+
+      User Request: {{ input }}
+```
+
+#### 4. Three-Phase Cost-Optimization Workflow
+
+1. **Phase 1: Local Extraction (`/digest`)**:
+   * Mode: **Chat Mode** in Continue (`Ctrl+L`).
+   * Select 3–5 related files (or drag the folder) into Continue Chat and run `/digest`.
+   * Save outputs to `migration-prep/01-ci.md`, `02-auth.md`, etc.
+2. **Phase 2: Master Synthesis (`/synthesize`)**:
+   * Attach the collected digests (`@File migration-prep/01-ci.md`, etc.) and run `/synthesize`.
+   * Save output as `migration-prep/MASTER_ARCHITECTURE_SPEC.md` (< 12,000 words).
+3. **Phase 3: Frontier Multi-Agent Orchestration in Antigravity**:
+   * Open **Google Antigravity (`Ctrl+L`)** in **Agent** mode on your **Google AI Pro** (`gemini-3.1-pro`) subscription.
+   * Attach `@migration-prep/MASTER_ARCHITECTURE_SPEC.md` and execute the generated orchestration brief across your MCP backends.
 
 
 ---
 
 ### Step 7.4: Automated Multi-IDE Ignore & Context Synchronization (`genignore.py`, `update-ai-ignore.sh`, and `pre-commit`)
 
-#### 1. Why Multi-Provider Ignore Synchronization is Critical
+Each AI assistant in your multi-agent workbench utilizes distinct configuration formats to restrict file indexing and prevent sensitive data exposure:
+* **Continue**: Reads `.continueignore` (native glob patterns).
+* **Antigravity**: Reads `.agentignore` (native glob patterns).
+* **Claude Code**: Enforces permissions via `permissions.deny` with `Read(...)` rules in `.claude/settings.json`, alongside general project instructions in `CLAUDE.md`.
+* **GitHub Copilot**: Enforces exclusions via `files.exclude` and `search.exclude` dictionaries in `.vscode/settings.json`, alongside workflow guidelines in `.github/copilot-instructions.md`.
+* **OpenAI Codex**: Reads instruction-based exclusion guidelines in `AGENTS.md` (supplementing its native `.gitignore` support).
 
-When orchestrating across multiple agentic tools (Continue, Antigravity, Claude Code, GitHub Copilot, and OpenAI Codex), each tool employs its own mechanism for excluding files from codebase discovery, vector indexing, and tool execution. If rules fall out of sync:
-* **Token Bleed**: Background indexers attempt to chunk massive minified JavaScript bundles, binary archives, and database dumps into local or cloud context windows.
-* **Secret Leakage**: Sensitive credentials (`.env`, `.env.*`, keys, certs) risk being injected into agent prompts or context snippets.
-* **Context Thrashing**: Large language models receive irrelevant test fixtures, lockfiles, and compiler outputs instead of high-signal source code.
+To automate the synchronization of exclusion rules across all five environments whenever `.gitignore` or `.gitattributes` change, deploy this unified automation toolchain.
 
-#### 2. Multi-Provider Ignore Architecture
+#### 1. The Multi-Provider Generator Script (`genignore.py`)
 
-Rather than treating instructional Markdown files as exclusion filters, this automated toolchain configures each provider's native exclusion engine:
-
-| Provider | Target Files | Mechanism & Rules Applied |
-| :--- | :--- | :--- |
-| **Continue** | `.continueignore` | **Native Ignore Rules**: Standard glob exclusion syntax (`.git/`, `.venv/`, `node_modules/`, `dist/`, build artifacts). |
-| **Antigravity** | `.agentignore` | **Native Ignore Rules**: Standard glob exclusion syntax preventing file discovery and context ingestion. |
-| **Claude Code** | `.claude/settings.json`<br>`CLAUDE.md` | **Enforced Permissions**: Deep-merges `permissions.deny` with `Read(...)` rules into `.claude/settings.json`; provides baseline project conventions in `CLAUDE.md`. |
-| **GitHub Copilot** | `.vscode/settings.json`<br>`.github/copilot-instructions.md` | **Workspace Exclusions**: Deep-merges `files.exclude` and `search.exclude` dictionaries into `.vscode/settings.json`; adds developer guidelines in `.github/copilot-instructions.md`. |
-| **OpenAI Codex** | `AGENTS.md` | **Instruction Guidance**: Structured `AGENTS.md` instructions with a dedicated `## Files to exclude from analysis` section (alongside `.gitignore` fallback). |
-
-#### 3. Component Scripts and Automation Architecture
-
-##### A. The Generator: `genignore.py`
-
-The core Python script (`genignore.py`) parses your project `.gitignore` and `.gitattributes` (including `filter=git-crypt` filters), merges baseline exclusions, and writes or deep-merges native configurations for all providers without destroying existing IDE settings:
+Deploy `genignore.py` in your repository root (or `scripts/genignore.py`):
 
 ```python
 #!/usr/bin/env python3
@@ -1895,9 +1997,14 @@ if __name__ == "__main__":
     main()
 ```
 
-##### B. The Shell Wrapper: `update-ai-ignore.sh`
+Make `genignore.py` executable:
+```bash
+chmod +x genignore.py
+```
 
-The standalone shell wrapper (`update-ai-ignore.sh`) automates execution by checking if `.gitignore` or `.gitattributes` have uncommitted changes before invoking `genignore.py`, with an optional `--stage` flag to automatically run `git add` on updated files:
+#### 2. The Git-Aware Shell Wrapper (`update-ai-ignore.sh`)
+
+Deploy `update-ai-ignore.sh` to handle uncommitted change detection and automated staging:
 
 ```bash
 #!/usr/bin/env bash
@@ -2037,9 +2144,14 @@ fi
 echo "[✓] AI ignore and instruction files successfully synchronized."
 ```
 
-##### C. The Git Pre-Commit Hook: `pre-commit`
+Make the wrapper executable:
+```bash
+chmod +x update-ai-ignore.sh
+```
 
-The pre-commit hook (`.git/hooks/pre-commit`) inspects staged files in your Git index. If `.gitignore` or `.gitattributes` are modified, it triggers `genignore.py --generate-ignore --append` and automatically re-stages all resulting provider files so rules and configurations are committed atomically:
+#### 3. Automated Git Pre-Commit Hook (`pre-commit`)
+
+Install `pre-commit` into `.git/hooks/pre-commit` to automatically synchronize and re-stage AI ignore files whenever `.gitignore` or `.gitattributes` are modified in a commit:
 
 ```bash
 #!/usr/bin/env bash
@@ -2136,110 +2248,38 @@ echo "[pre-commit] Re-staged updated AI provider files into the current commit."
 exit 0
 ```
 
-#### 4. Installation and Setup Instructions
-
-##### Step 1: Install Scripts into Project or System Path
-
-Place `genignore.py` and `update-ai-ignore.sh` in your project root or `scripts/` directory (or system `~/.local/bin/` for global availability) and make them executable:
-
+Make the hook executable:
 ```bash
-# Make scripts executable
-chmod +x genignore.py update-ai-ignore.sh
-
-# Optional: Link to ~/.local/bin for global availability across all projects
-mkdir -p ~/.local/bin
-ln -sf "$(pwd)/genignore.py" ~/.local/bin/genignore.py
-ln -sf "$(pwd)/update-ai-ignore.sh" ~/.local/bin/update-ai-ignore.sh
-```
-
-##### Step 2: Install the Git Pre-Commit Hook
-
-Install the hook directly into your repository's `.git/hooks/` directory:
-
-```bash
-# Install to repository hooks
-cp pre-commit .git/hooks/pre-commit
 chmod +x .git/hooks/pre-commit
 ```
 
-*Alternative for `pre-commit` Framework (`.pre-commit-config.yaml`)*:
-If your repository utilizes the Python `pre-commit` package, add the local hook to `.pre-commit-config.yaml`:
+#### 4. Installation and Common Workflows
 
-```yaml
-repos:
-  - repo: local
-    hooks:
-      - id: sync-ai-ignore
-        name: Sync AI Provider Ignore Files
-        entry: ./update-ai-ignore.sh --force --stage
-        language: script
-        files: ^(\.gitignore|\.gitattributes)$
-        pass_filenames: false
-```
-
-#### 5. Command-Line Usage and Practical Examples
-
-##### Example 1: Generate All Provider Files for a New Repository
-
-Generates baseline `.continueignore`, `.agentignore`, `.claude/settings.json`, `CLAUDE.md`, `.vscode/settings.json`, `.github/copilot-instructions.md`, and `AGENTS.md`:
+#### Initializing Provider Files in a New Repository:
 
 ```bash
+# Generate all missing provider files with safe defaults
 ./genignore.py --generate-ignore
+
+# Or force overwrite if re-initializing from scratch
+./genignore.py --generate-ignore --overwrite
 ```
 
-##### Example 2: Append Custom Exclusion Patterns Across All Tools
-
-Appends binary, archive, key, or secret patterns to `.continueignore` and `.agentignore`, while deep-merging them into `.claude/settings.json` (`permissions.deny`) and `.vscode/settings.json` (`files.exclude`/`search.exclude`):
+#### Appending Custom Project Exclusions:
 
 ```bash
-./genignore.py --generate-ignore --append \
-  "*.rpm" "*.tar.gz" "*.png" "*.jpg" "*.svg" \
-  "RPM-GPG-KEY-*" "*.secret.env"
+# Append custom binary and sensitive patterns without duplicating entries
+./genignore.py --generate-ignore --append "*.rpm" "*.tar.gz" "*.png" "RPM-GPG-KEY-*"
 ```
 
-##### Example 3: Target Specific AI Providers
-
-Update only designated agent platforms:
+#### Running the Shell Wrapper with Auto-Staging:
 
 ```bash
-# Generate only Continue and Antigravity ignore files
-./genignore.py --generate-ignore --provider continue antigravity
+# Synchronize only if .gitignore or .gitattributes changed, and stage updated files
+./update-ai-ignore.sh --stage
 
-# Update only Claude Code and Codex settings
-./genignore.py --generate-ignore --append --provider claude codex "*.sqlite3"
-```
-
-##### Example 4: Manual Wrapper Execution with Automatic Git Staging
-
-Force an update of all provider files and automatically stage them in Git:
-
-```bash
+# Force run unconditionally and stage updated provider files
 ./update-ai-ignore.sh --force --stage
-```
-
-##### Example 5: Automated Pre-Commit Workflow in Action
-
-Whenever you edit `.gitignore` or `.gitattributes` and run `git commit`, the hook automatically runs:
-
-```bash
-# 1. Edit .gitignore
-echo "*.data" >> .gitignore
-git add .gitignore
-
-# 2. Run git commit - hook automatically triggers
-git commit -m "chore: ignore data files"
-# Output:
-# [pre-commit] Staged changes detected in: .gitignore
-# [pre-commit] Synchronizing AI provider ignore files via genignore.py...
-# [*] Synchronizing AI provider ignore files using genignore.py...
-# [APPEND]    .continueignore
-# [APPEND]    .agentignore
-# [UPDATE]    .claude/settings.json
-# [UPDATE]    .vscode/settings.json
-# [APPEND]    AGENTS.md
-# [*] Automatically staged updated AI provider files: .continueignore .agentignore .claude/settings.json CLAUDE.md .vscode/settings.json .github/copilot-instructions.md AGENTS.md
-# [✓] AI ignore and instruction files successfully synchronized.
-# [pre-commit] Re-staged updated AI provider files into the current commit.
 ```
 
 
@@ -2447,7 +2487,7 @@ Run the server health check:
 claude mcp list
 ```
 
-Verify that all 12 configured servers (`gemini-carbon-gcp`, `claude-fable-gcp`, `openai-codex-plus`, `openai-codex-api`, `github-mcp`, `github-models`, `gitlab-com`, `gitlab-lip`, `gitlab-admin-lip`, `gitlab-legacy`, `gitlab-admin-legacy`) display `Connected`.
+Verify that all 11 configured servers (`gemini-carbon-gcp`, `claude-fable-gcp`, `openai-codex-plus`, `openai-codex-api`, `github-mcp`, `gitlab-com`, `gitlab-lip`, `gitlab-admin-lip`, `gitlab-legacy`, `gitlab-admin-legacy`) display `Connected`.
 
 ### Step 10.3: Inspect Live Indicators and Utilize MCP Servers in VS Code Antigravity
 
@@ -2475,11 +2515,6 @@ In the Google Antigravity VS Code extension, MCP servers do **not** appear as se
   * *"Have `claude-fable-gcp` review the diff proposed by `gemini-carbon-gcp` before applying changes."*
   * *"Use `openai-codex-plus` (via `ask_codex`) to provide a second-opinion refactoring for this module."*
   * *"Query `github-mcp` to list open pull requests and recent commit issues in this repository."*
-* *"Query `github-models` using tool `list_github_models` to inspect available Copilot models."*
-* *"Using `github-models` with default `auto` model routing, write a unit test for this parser."*
-* *"Ask `github-models` with model `grok-4.7` to evaluate this edge case."*
-* *"Ask `github-models` with model `mai-code-2-flash` to optimize this loop."*
-* *"Use `github-models` with model `claude-sonnet-5.5` to review the architectural plan."*
 * *"Query `gitlab-com` using tool `glcom_list_projects` to check my recent repositories."*
 * *"Using `gitlab-lip` (tool `gllip_list_merge_requests`), review open MRs targeting production."*
 * *"Inspect the latest CI pipeline failures on `gitlab.legacy.example.org` via `gitlab-legacy` (tool `gllegacy_list_pipelines`)."*
