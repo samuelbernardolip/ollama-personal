@@ -250,7 +250,7 @@ models:
     roles:
       - rerank
 
-  # 💻 LAPTOP DISK WORKER (Phase 1: Local File Extraction on GTX 1650 4GB - Zero Thinking Overhead)
+  # 💻 LAPTOP DISK WORKER (Phase 1: Local File Extraction on GTX 1650 4GB)
   - name: Laptop-Worker-3B
     provider: openai
     model: qwen2.5-coder:3b-instruct-q8_0
@@ -258,16 +258,14 @@ models:
     roles:
       - chat
       - edit
-      - summarize
-    contextLength: 16384
+    contextLength: 4096
     requestOptions:
       extraBodyProperties:
         options:
-          num_ctx: 16384
+          num_ctx: 4096
           num_predict: 2048
-          temperature: 0.1
 
-  # 🖥️ OFFICE DISK SYNTHESIZER (Phase 1: Cross-Repo Synthesis on RTX 3050 8GB - Reasoning-Capable Distillation)
+  # 🖥️ OFFICE DISK SYNTHESIZER (Phase 1: Cross-Repo Synthesis on RTX 3050 8GB)
   - name: Office-Synthesizer-7B
     provider: openai
     model: qwen2.5-coder:7b-instruct-q4_K_M
@@ -275,25 +273,22 @@ models:
     roles:
       - chat
       - edit
-      - summarize
-    contextLength: 16384
+    contextLength: 8192
     requestOptions:
       extraBodyProperties:
         options:
-          num_ctx: 16384
+          num_ctx: 8192
           num_predict: 4096
-          temperature: 0.1
 
 # ==============================================================================
 # 3. CONTEXT PROVIDERS & RAG OPTIMIZATION (GTX 1650 4GB BUFFER)
 # ==============================================================================
 context:
-  # Supported modern, non-deprecated context providers
   - provider: file
   - provider: tree
   - provider: open
   - provider: diff
-  # Two-Stage RAG Pipeline: Retrieves 12 vector candidates, scores via CPU reranker, passes only top 3
+  # RAG Pipeline: Retrieves 12 vector candidates, scores via CPU reranker, passes only top 3
   - provider: codebase
     params:
       nRetrieve: 12
@@ -313,29 +308,27 @@ context:
 #   - GitHub MCP (Repository context & issues via host Node runtime)
 # ==============================================================================
 mcpServers:
-  # 1. Google Cloud Gemini 4 Carbon via Native agy-mcp-bridge
-  - name: gemini-carbon-gcp
-    command: /home/YOUR_USERNAME/.local/bin/agy-mcp-bridge
-    args: []
+  # 1. Google AI Pro Subscription Models via Local Bridge
+  - name: google-pro
+    command: /home/YOUR_USERNAME/.local/bin/google-pro-mcp
+
+  # 2. Google Cloud Agent Platform Models (ADC) via Local Bridge
+  - name: google-cloud
+    command: /home/YOUR_USERNAME/.local/bin/google-cloud-mcp
     env:
       GOOGLE_CLOUD_PROJECT: "YOUR_GCP_PROJECT_ID"
       GOOGLE_CLOUD_LOCATION: "global"
 
-  # 2. Claude Fable 5.2 on Google Cloud Model Garden (Vertex AI ADC)
-  - name: claude-fable-gcp
-    command: /usr/bin/claude
-    args:
-      - mcp
-      - serve
+  # 3. Anthropic Claude on Google Cloud Model Garden (Vertex AI ADC)
+  - name: claude-gcp
+    command: /home/YOUR_USERNAME/.local/bin/claude-gcp-mcp
     env:
       CLAUDE_CONFIG_DIR: "/home/YOUR_USERNAME/.claude-gcp"
       CLAUDE_CODE_USE_VERTEX: "1"
       CLOUD_ML_REGION: "global"
       ANTHROPIC_VERTEX_PROJECT_ID: "YOUR_GCP_PROJECT_ID"
-      ANTHROPIC_MODEL: "claude-fable-5-2"
-      ANTHROPIC_SMALL_FAST_MODEL: "claude-sonnet-5-5"
 
-  # 3. Anthropic Teams (Interactive Claude Code)
+  # 4. Anthropic Teams (Interactive Claude Code)
   - name: claude-teams
     command: /usr/bin/claude
     args:
@@ -344,83 +337,72 @@ mcpServers:
     env:
       CLAUDE_CONFIG_DIR: "/home/YOUR_USERNAME/.claude"
 
-  # 4. OpenAI Codex CLI via ChatGPT Plus Subscription (€23/mo OAuth)
+  # 5. OpenAI Codex CLI via ChatGPT Plus Subscription (€23/mo OAuth)
   - name: openai-codex-plus
     command: /home/YOUR_USERNAME/.local/bin/codex-mcp-bridge
     args: []
     env:
       CODEX_HOME: "/home/YOUR_USERNAME/.codex"
 
-  # 5. OpenAI Codex CLI via On-Demand API Key (Pay-As-You-Go)
+  # 6. OpenAI Codex CLI via On-Demand API Key (Pay-As-You-Go)
   - name: openai-codex-api
     command: /home/YOUR_USERNAME/.local/bin/codex-mcp-bridge
     args: []
     env:
       CODEX_HOME: "/home/YOUR_USERNAME/.codex-api"
 
-  # 6. GitHub MCP Server (Secret-Free via Environment Variable Expansion)
+  # 7. GitHub MCP Server (Secret-Free via Environment Variable Expansion)
   - name: github-mcp
     command: npx
     args:
       - -y
       - "@modelcontextprotocol/server-github"
     env:
-      GITHUB_PERSONAL_ACCESS_TOKEN: "${GITHUB_PERSONAL_ACCESS_TOKEN}"
+      GITHUB_PERSONAL_ACCESS_TOKEN: ""
 
-  # 7. GitHub Models MCP Server (Copilot AI Inference via Local Bridge)
+  # 8. GitHub Copilot Models MCP Server (Local ACP Bridge)
   - name: github-models
     command: /home/YOUR_USERNAME/.local/bin/github-models-mcp
     args: []
 
-  # 7. GitLab.com (SaaS, GitLab 19.5+) via Native Remote MCP
+  # 9. Continue Vector DB & Local Python Reranker MCP Server
+  - name: continue-rag
+    command: /home/YOUR_USERNAME/.local/bin/continue-rag-mcp
+
+  # 10. GitLab.com (SaaS, GitLab 19.5+) via Native Remote MCP
   - name: gitlab-com
-    command: npx
+    command: sh
     args:
-      - -y
-      - mcp-remote
-      - https://gitlab.com
-      - --header
-      - X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security
-      - --header
-      - X-Gitlab-Mcp-Server-Tool-Name-Prefix:glcom_
+      - -c
+      - set -a && [ -f "/home/sandbox/.config/antigravity-mcp/gitlab-com.env" ] && . "/home/sandbox/.config/antigravity-mcp/gitlab-com.env"; set +a && exec npx -y mcp-remote https://gitlab.com/api/v4/mcp --header "Authorization: Bearer " --header "X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security" --header "X-Gitlab-Mcp-Server-Tool-Name-Prefix:glcom_"
 
-  # 8. GitLab LIP (Self-Hosted Production, GitLab 19.5.3) via Native Remote MCP
+  # 11. GitLab LIP (Self-Hosted Production, GitLab 19.5.3) via Native Remote MCP
   - name: gitlab-lip
-    command: npx
+    command: sh
     args:
-      - -y
-      - mcp-remote
-      - https://gitlab.lip.pt
-      - --header
-      - X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security
-      - --header
-      - X-Gitlab-Mcp-Server-Tool-Name-Prefix:gllip_
+      - -c
+      - set -a && [ -f "/home/sandbox/.config/antigravity-mcp/gitlab-lip.env" ] && . "/home/sandbox/.config/antigravity-mcp/gitlab-lip.env"; set +a && exec npx -y mcp-remote https://gitlab.lip.pt/api/v4/mcp --header "Authorization: Bearer " --header "X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security" --header "X-Gitlab-Mcp-Server-Tool-Name-Prefix:gllip_"
 
-  # 9. GitLab Admin LIP (Self-Hosted Admin, GitLab 19.5.3) via Native Remote MCP
+  # 12. GitLab Admin LIP (Self-Hosted Admin, GitLab 19.5.3) via Native Remote MCP
   - name: gitlab-admin-lip
-    command: npx
+    command: sh
     args:
-      - -y
-      - mcp-remote
-      - https://gitlab-admin.lip.pt
-      - --header
-      - X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security
-      - --header
-      - X-Gitlab-Mcp-Server-Tool-Name-Prefix:gladminlip_
+      - -c
+      - set -a && [ -f "/home/sandbox/.config/antigravity-mcp/gitlab-admin-lip.env" ] && . "/home/sandbox/.config/antigravity-mcp/gitlab-admin-lip.env"; set +a && exec npx -y mcp-remote https://gitlab-admin.lip.pt/api/v4/mcp --header "Authorization: Bearer " --header "X-Gitlab-Enabled-Mcp-Server-Toolsets:core,merge_requests,work_items,repository,ci,wikis,code_security" --header "X-Gitlab-Mcp-Server-Tool-Name-Prefix:gladminlip_"
 
-  # 10. GitLab ACNCA (Self-Hosted Legacy, GitLab 18.2.8) via @zereight/mcp-gitlab + .env
+  # 13. GitLab ACNCA (Self-Hosted Legacy, GitLab 18.2.8) via @zereight/mcp-gitlab + .env
   - name: gitlab-acnca
     command: sh
     args:
       - -c
-      - set -a && . "$HOME/.config/antigravity-mcp/gitlab-acnca.env" && set +a && exec npx -y @zereight/mcp-gitlab
+      - set -a && . "/home/sandbox/.config/antigravity-mcp/gitlab-acnca.env" && set +a && exec npx -y @zereight/mcp-gitlab
 
-  # 11. GitLab Admin ACNCA (Self-Hosted Legacy Admin, GitLab 16.x) via @zereight/mcp-gitlab + .env
+  # 14. GitLab Admin ACNCA (Self-Hosted Legacy Admin, GitLab 16.x) via @zereight/mcp-gitlab + .env
   - name: gitlab-admin-acnca
     command: sh
     args:
       - -c
-      - set -a && . "$HOME/.config/antigravity-mcp/gitlab-admin-acnca.env" && set +a && exec npx -y @zereight/mcp-gitlab
+      - set -a && . "/home/sandbox/.config/antigravity-mcp/gitlab-admin-acnca.env" && set +a && exec npx -y @zereight/mcp-gitlab
 
 # ==============================================================================
 # 5. WORKSPACE TOOLS & EXECUTION POLICIES
@@ -740,7 +722,6 @@ prompts:
       4. Target Modernization Architecture & Decoupling Strategy
       Output ONLY structured Markdown with clear operational headers.
 
-  # --- Generative Antigravity Orchestration Prompts (Local RAG to Frontier Agent) ---
   - name: antigravity-spec-laptop
     description: "Generate Antigravity orchestration brief via Local RAG (Zero Thinking Overhead, 4GB VRAM)"
     prompt: |
@@ -754,15 +735,15 @@ prompts:
       - **Constraints**: [Key API signatures, versions, or library rules]
 
       ### 2. Multi-Agent MCP Routing Plan (Cost-Optimized)
-      Instruct the Antigravity Orchestrator (`gemini-3.1-pro` flat-rate default, or `gemini-3.8-flash`) to execute sequentially:
+      Instruct the Antigravity Orchestrator ( flat-rate default, or ) to execute sequentially:
       - **Stage 1 — Architecture & Edge-Case Check (Deep Reasoning)**:
-        - Delegate via MCP to: `claude-fable-gcp` (`claude-fable-5-2`) or `gemini-carbon-gcp` (`gemini-4-carbon-medium`).
+        - Delegate via MCP to:  () or  ().
         - Rule: Pass ONLY file signatures and error logs; require a bulleted diff plan (<250 words).
       - **Stage 2 — Implementation (Coding)**:
-        - Delegate via MCP to: `openai-codex-plus` (`ask_codex`) or `github-models` (model `auto` / `claude-sonnet-5.5`).
+        - Delegate via MCP to:  () or  (model  / ).
         - Rule: Apply exact edits to the target files in Section 1.
       - **Stage 3 — Tests & Verification (Quota-Saving)**:
-        - Delegate via MCP to: `github-models` (model `auto` via Copilot quota) or `gitlab-com` / `gitlab-lip` CI tools.
+        - Delegate via MCP to:  (model  via Copilot quota) or  /  CI tools.
         - Rule: Generate unit tests and verify build.
 
       ### 3. Exit Criteria
@@ -790,23 +771,23 @@ prompts:
 
       ### 2. Phase 0: MCP Model Discovery & Local Cache Check
       Before routing any subtasks, execute this zero-waste discovery step:
-      1. Check if `.agents/mcp_models_cache.json` exists in the workspace and is **less than 24 hours old**.
-      2. **If valid cache exists**: Read `.agents/mcp_models_cache.json` directly and skip querying MCP servers.
-      3. **If missing or stale**: Query each active MCP server (`github-models`, `openai-codex-api`, `claude-fable-gcp`, `gemini-carbon-gcp`) for currently available model IDs, context limits, and pricing tiers. Save the normalized result to `.agents/mcp_models_cache.json`.
+      1. Check if  exists in the workspace and is **less than 24 hours old**.
+      2. **If valid cache exists**: Read  directly and skip querying MCP servers.
+      3. **If missing or stale**: Query each active MCP server (, , , , , ) for currently available model IDs, context limits, and pricing tiers. Save the normalized result to .
 
       ### 3. Dynamic Cost-to-Capability Routing Matrix
       Using the verified models, select the optimal model per stage based on Task Type × Output Volume × Cost Ratio:
-      - **Orchestration & Routing**: `gemini-3.1-pro` (Antigravity default flat-rate) or `gemini-3.8-flash`. Pass diffs/IDs only, never raw files.
-      - **Deep Reasoning / Complex Refactor (Conditional)**: `claude-fable-5-2` (on GCP Model Garden) or `gemini-4-carbon` (on Vertex AI ADC). Output capped at <250 tokens diff plan.
-      - **Focused Code Implementation**: `gpt-5.3-codex` via `openai-codex-plus` or `github-models` (model `auto` for discounted routing). Keep prompt <272K tokens.
+      - **Orchestration & Routing**:  (Antigravity default flat-rate) or . Pass diffs/IDs only, never raw files.
+      - **Deep Reasoning / Complex Refactor (Conditional)**:  (on GCP Model Garden via ) or  (on Vertex AI ADC via ). Output capped at <250 tokens diff plan.
+      - **Focused Code Implementation**:  via  or  (model  for discounted routing). Keep prompt <272K tokens.
       - **Docs & Test Generation (2-Step Split)**:
-        - *Step A (Planner)*: `gemini-3.8-flash` emits <150-token outline of test cases and doc sections.
-        - *Step B (Writer)*: `github-models` (Copilot quota, $0 marginal) or cheapest writer expands full Markdown docs and tests.
+        - *Step A (Planner)*:  emits <150-token outline of test cases and doc sections.
+        - *Step B (Writer)*:  (Copilot quota, -bash marginal) or cheapest writer expands full Markdown docs and tests.
 
       ### 4. Execution & Verification Protocol
       1. **Dynamic Selection Log**: Print a compact 4-line summary mapping each stage to the chosen model and justification.
       2. **Sequential Execution**: Run only stages required by the Task Profile.
       3. **Verify & Self-Heal**: Run [exact test or build command]. Route stack traces to coder subagent; escalate to reasoning model only if initial fix fails.
-      4. **Hygiene**: Ensure `.agents/mcp_models_cache.json` is listed in both `.gitignore` and `.continueignore`.
+      4. **Hygiene**: Ensure  is listed in both  and .
 
       User Request: {{{ input }}}
